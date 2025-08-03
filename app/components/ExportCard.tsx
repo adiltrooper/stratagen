@@ -54,7 +54,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
   };
 
   return (
-    <>
+    <div className="flex flex-col items-center gap-2 sm:gap-4">
       <div 
         ref={exportRef}
         className={`flex flex-col justify-center items-center w-[360px] sm:w-[480px] p-11 rounded-4xl gap-2 ${
@@ -73,18 +73,18 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
           hideNavigation={isExporting}
         />
 
-        <p className="text-2xl font-bold bg-sky-200">STRIVA</p>
+        <p className="text-2xl font-bold">STRIVA</p>
       </div>
 
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center w-[360px] sm:w-[480px]">
         <button 
           onClick={handleExport}
           disabled={isExporting}
-          className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors duration-200"
+          className="h-12 bg-white w-full hover:bg-blue-600 disabled:bg-gray-400 text-background-secondary font-medium text-lg rounded-full transition-colors duration-200"
         >
           {isExporting ? 'Exporting...' : 'Export'}
         </button>
       </div>
-    </>
+    </div>
   );
 }

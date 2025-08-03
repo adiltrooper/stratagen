@@ -264,6 +264,7 @@ export default function NumericalInput({
     const [cursorPosition, setCursorPosition] = useState(0);
     const [isHovered, setIsHovered] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const hiddenInputRef = useRef<HTMLInputElement>(null);
 
     // Map labels to their corresponding image paths
     const labelImageMap: { [key: string]: string } = {
@@ -335,10 +336,19 @@ export default function NumericalInput({
     };
 
     const handleClick = () => {
+        console.log('Click handler triggered');
         setIsEditing(true);
         setCurrentSegment(0);
         setInputDigits('');
         setCursorPosition(getCursorDisplayPosition(0, 0));
+        
+        // Focus hidden input to trigger mobile keyboard
+        setTimeout(() => {
+            if (hiddenInputRef.current) {
+                console.log('Focusing hidden input');
+                hiddenInputRef.current.focus();
+            }
+        }, 0);
     };
 
     const moveToNextSegment = () => {
@@ -399,15 +409,93 @@ export default function NumericalInput({
         }
     };
 
+    const handleHiddenInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!isEditing) return;
+        
+        const value = e.target.value;
+        console.log('Hidden input change:', value, 'isEditing:', isEditing, 'currentSegment:', currentSegment);
+        
+        // Process each character in the input
+        for (let i = 0; i < value.length; i++) {
+            const char = value[i];
+            if (char >= '0' && char <= '9') {
+                const currentConfig = segments[currentSegment];
+                
+                if (inputDigits.length < currentConfig.maxDigits) {
+                    const newDigits = inputDigits + char;
+                    setInputDigits(newDigits);
+                    setCursorPosition(getCursorDisplayPosition(currentSegment, newDigits.length));
+
+                    const newValues = [...displayValues];
+                    newValues[currentSegment] = getDisplayValueFromDigits(newDigits, currentConfig);
+                    setDisplayValues(newValues);
+
+                    // Auto-advance to next segment when current is complete
+                    if (newDigits.length === currentConfig.maxDigits) {
+                        setTimeout(moveToNextSegment, 300);
+                    }
+                    break; // Process only one digit at a time
+                }
+            }
+        }
+        
+        // Clear the hidden input to prevent interference
+        setTimeout(() => {
+            if (hiddenInputRef.current) {
+                hiddenInputRef.current.value = '';
+            }
+        }, 0);
+    };
+
+    const handleHiddenInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (!isEditing) return;
+
+        const currentConfig = segments[currentSegment];
+
+        if (e.key === 'Backspace') {
+            e.preventDefault();
+            if (inputDigits.length > 0) {
+                const newDigits = inputDigits.slice(0, -1);
+                setInputDigits(newDigits);
+                setCursorPosition(getCursorDisplayPosition(currentSegment, newDigits.length));
+
+                const newValues = [...displayValues];
+                newValues[currentSegment] = getDisplayValueFromDigits(newDigits, currentConfig);
+                setDisplayValues(newValues);
+            } else if (currentSegment > 0) {
+                // Move to previous segment
+                setCurrentSegment(currentSegment - 1);
+                setInputDigits('');
+                setCursorPosition(getCursorDisplayPosition(currentSegment - 1, 0));
+            }
+        } else if (e.key === 'Tab' || e.key === 'Enter') {
+            e.preventDefault();
+            moveToNextSegment();
+        } else if (e.key === 'Escape') {
+            setIsEditing(false);
+            setInputDigits('');
+            setCursorPosition(-1);
+        }
+    };
+
     const handleBlur = () => {
         setIsEditing(false);
         setCursorPosition(-1);
     };
 
+    const handleHiddenInputBlur = () => {
+        // Small delay to allow other interactions to complete
+        setTimeout(() => {
+            setIsEditing(false);
+            setCursorPosition(-1);
+        }, 100);
+    };
+
     // Focus management
     useEffect(() => {
-        if (isEditing && containerRef.current) {
-            containerRef.current.focus();
+        if (isEditing && hiddenInputRef.current) {
+            // Always focus the hidden input when editing starts
+            hiddenInputRef.current.focus();
         }
     }, [isEditing]);
 
@@ -429,6 +517,7 @@ export default function NumericalInput({
         inline-flex flex-col items-center
         cursor-pointer 
         transition-colors 
+        relative
         ${className}
         ${isEditing ? 'outline-none' : ''}
       `}
@@ -436,9 +525,26 @@ export default function NumericalInput({
             onClick={!isEditing ? handleClick : undefined}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
-            onBlur={handleBlur}
-            tabIndex={isEditing ? 0 : -1}
         >
+            {/* Hidden input for mobile keyboard support */}
+            <input
+                ref={hiddenInputRef}
+                type="text"
+                inputMode="numeric"
+                className="absolute opacity-0 pointer-events-none w-0 h-0"
+                style={{ 
+                    position: 'absolute',
+                    left: '-9999px',
+                    top: '-9999px'
+                }}
+                onChange={handleHiddenInputChange}
+                onKeyDown={handleHiddenInputKeyDown}
+                onBlur={handleHiddenInputBlur}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+            />
             {/* Label positioned above */}
             <div className="flex items-center justify-center">
                 {labelImageMap[label] ? (
