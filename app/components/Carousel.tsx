@@ -40,7 +40,7 @@ export default function Carousel({
   return (
     <div className={`relative w-full max-w-4xl mx-auto ${className}`}>
       {/* Main carousel container with better height for export */}
-      <div className="relative h-80 overflow-hidden rounded-lg bg-transparent">
+      <div className="relative h-60 overflow-hidden rounded-lg bg-transparent">
         <div
           className="flex w-full h-full"
           style={{
