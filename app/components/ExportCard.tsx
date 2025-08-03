@@ -57,7 +57,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
     <>
       <div 
         ref={exportRef}
-        className={`flex flex-col justify-center items-center w-[480px] p-12 rounded-4xl gap-2 ${
+        className={`flex flex-col justify-center items-center w-[360px] sm:w-[480px] p-12 rounded-4xl gap-2 ${
           isExporting ? '' : 'bg-background-secondary'
         }`}
       >
