@@ -1,36 +1,33 @@
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 
 interface CarouselProps {
   images: string[];
+  currentIndex: number;
+  onIndexChange: (index: number) => void;
   autoPlay?: boolean;
   autoPlayInterval?: number;
   className?: string;
   hideNavigation?: boolean;
 }
 
-export default function Carousel({ 
-  images, 
-  autoPlay = false, 
+export default function Carousel({
+  images,
+  currentIndex,
+  onIndexChange,
+  autoPlay = false,
   autoPlayInterval = 5000,
   className = '',
-  hideNavigation = false 
+  hideNavigation = false
 }: CarouselProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  
   const nextSlide = () => {
-    setCurrentIndex((prevIndex) => 
-      prevIndex === images.length - 1 ? 0 : prevIndex + 1
-    );
+    onIndexChange(currentIndex === images.length - 1 ? 0 : currentIndex + 1);
   };
 
   const prevSlide = () => {
-    setCurrentIndex((prevIndex) => 
-      prevIndex === 0 ? images.length - 1 : prevIndex - 1
-    );
+    onIndexChange(currentIndex === 0 ? images.length - 1 : currentIndex - 1);
   };
 
   if (images.length === 0) {

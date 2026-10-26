@@ -273,16 +273,17 @@ export default function NumericalInput({
         'Pace': '/images/labels/labelPace.png',
     };
 
-    // Animate to zero on mount if configured
+    // Animate to zero on mount if configured. Depends on segments.length, not segments:
+    // callers pass a fresh array each render, which would re-zero values on every re-render.
     useEffect(() => {
         if (animateOnMount) {
             const timer = setTimeout(() => {
-                setDisplayValues(segments.map(() => 0));
+                setDisplayValues(Array(segments.length).fill(0));
             }, animateToZeroDelay);
 
             return () => clearTimeout(timer);
         }
-    }, [animateOnMount, animateToZeroDelay, segments]);
+    }, [animateOnMount, animateToZeroDelay, segments.length]);
 
     // Convert input digits to display value for current segment
     const getDisplayValueFromDigits = (digits: string, segmentConfig: NumberSegmentConfig): number => {
@@ -630,7 +631,18 @@ export default function NumericalInput({
 }
 
 // Convenience components for common use cases
-export function DistanceInput({ initialValue = 0, className = '' }: { initialValue?: number; className?: string }) {
+export type DistanceUnit = 'km' | 'mi';
+
+const unitImageMap: Record<DistanceUnit, string> = {
+    km: '/images/letters/km.png',
+    mi: '/images/letters/mi.svg',
+};
+
+export function DistanceInput({ initialValue = 0, unit = 'km', className = '' }: {
+    initialValue?: number;
+    unit?: DistanceUnit;
+    className?: string;
+}) {
     return (
         <NumericalInput
             label="Distance"
@@ -645,7 +657,7 @@ export function DistanceInput({ initialValue = 0, className = '' }: { initialVal
                 }
             ]}
             suffix={{
-                imagePath: '/images/letters/km.png'
+                imagePath: unitImageMap[unit]
             }}
             className={className}
             animateOnMount={true}
@@ -654,9 +666,10 @@ export function DistanceInput({ initialValue = 0, className = '' }: { initialVal
     );
 }
 
-export function PaceInput({ initialMinutes = 0, initialSeconds = 0, className = '' }: {
+export function PaceInput({ initialMinutes = 0, initialSeconds = 0, unit = 'km', className = '' }: {
     initialMinutes?: number;
     initialSeconds?: number;
+    unit?: DistanceUnit;
     className?: string;
 }) {
     return (
@@ -683,7 +696,7 @@ export function PaceInput({ initialMinutes = 0, initialSeconds = 0, className = 
             ]}
             suffixes={[
                 { imagePath: '/images/letters/slash.png', height: 40 },
-                { imagePath: '/images/letters/km.png', height: 35 },
+                { imagePath: unitImageMap[unit], height: 35 },
             ]}
             className={className}
             animateOnMount={true}
