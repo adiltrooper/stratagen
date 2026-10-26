@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { motion } from "motion/react";
 import { DistanceInput, PaceInput, TimeInput, type DistanceUnit } from "./NumericalInput";
 import Carousel from "./Carousel";
-import DrawRouteModal, { type Stroke } from "./DrawRouteModal";
+import RouteDrawLayer, { type DrawnRoute } from "./RouteDrawLayer";
 
 const units: DistanceUnit[] = ['km', 'mi'];
 
@@ -18,15 +18,21 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
   const [routeIndex, setRouteIndex] = useState(0);
   const [isDrawing, setIsDrawing] = useState(false);
   // The user's own route lives in one slot after the presets; redrawing replaces it
-  const [drawnRoute, setDrawnRoute] = useState<{ src: string; strokes: Stroke[] } | null>(null);
+  const [drawnRoute, setDrawnRoute] = useState<DrawnRoute | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
 
   const routeImages = drawnRoute ? [...carouselImages, drawnRoute.src] : carouselImages;
 
-  const handleDrawDone = (route: { src: string; strokes: Stroke[] }) => {
+  const handleDrawDone = (route: DrawnRoute | null) => {
     setDrawnRoute(route);
-    setRouteIndex(carouselImages.length);
-    setIsDrawing(false);
+    if (route) {
+      setRouteIndex(carouselImages.length);
+    } else if (routeIndex >= carouselImages.length) {
+      setRouteIndex(0);
+    }
+    // Leave drawing mode a frame later, so the carousel jumps to the new slide while its slide
+    // transition is still off; the drawn slide then fades in exactly where the strokes were
+    requestAnimationFrame(() => setIsDrawing(false));
   };
 
   const handleExport = async () => {
@@ -85,23 +91,28 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
         </div>
         
         <div className="relative w-full">
-          <Carousel
-            images={routeImages}
-            currentIndex={routeIndex}
-            onIndexChange={setRouteIndex}
-            className="w-full"
-            hideNavigation={isExporting}
-          />
+          {/* The current route blurs away while drawing, leaving the grid in its place */}
+          <div
+            className="transition-[filter,opacity] duration-300 ease-out"
+            style={{ filter: isDrawing ? 'blur(8px)' : 'none', opacity: isDrawing ? 0 : 1 }}
+          >
+            <Carousel
+              images={routeImages}
+              currentIndex={routeIndex}
+              onIndexChange={setRouteIndex}
+              className="w-full"
+              hideNavigation={isExporting || isDrawing}
+              fullBleedIndex={drawnRoute ? carouselImages.length : undefined}
+            />
+          </div>
           {!isExporting && (
-            <button
-              onClick={() => setIsDrawing(true)}
-              className="absolute top-2 right-2 flex items-center gap-1.5 h-9 pl-3 pr-3.5 rounded-full bg-black/50 hover:bg-black/70 text-white text-sm font-medium backdrop-blur-sm transition-colors duration-200"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.862 4.487a2.1 2.1 0 1 1 2.97 2.97L8.5 18.79l-4 1 1-4L16.862 4.487Z" />
-              </svg>
-              Draw
-            </button>
+            <RouteDrawLayer
+              isDrawing={isDrawing}
+              initialStrokes={drawnRoute?.strokes ?? []}
+              onStart={() => setIsDrawing(true)}
+              onCancel={() => setIsDrawing(false)}
+              onDone={handleDrawDone}
+            />
           )}
         </div>
 
@@ -143,13 +154,6 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
           {isExporting ? 'Exporting...' : 'Export'}
         </button>
       </div>
-
-      <DrawRouteModal
-        open={isDrawing}
-        initialStrokes={drawnRoute?.strokes ?? []}
-        onCancel={() => setIsDrawing(false)}
-        onDone={handleDrawDone}
-      />
     </div>
   );
 }

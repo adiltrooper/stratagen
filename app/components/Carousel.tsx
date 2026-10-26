@@ -7,6 +7,8 @@ interface CarouselProps {
   images: string[];
   currentIndex: number;
   onIndexChange: (index: number) => void;
+  // A slide drawn at the carousel's own size (the user's route), shown edge to edge without padding
+  fullBleedIndex?: number;
   autoPlay?: boolean;
   autoPlayInterval?: number;
   className?: string;
@@ -17,6 +19,7 @@ export default function Carousel({
   images,
   currentIndex,
   onIndexChange,
+  fullBleedIndex,
   autoPlay = false,
   autoPlayInterval = 5000,
   className = '',
@@ -48,9 +51,11 @@ export default function Carousel({
           {images.map((image, index) => (
             <div
               key={index}
-              className="flex-shrink-0 w-full h-full relative p-6 flex justify-center items-center"
+              className={`flex-shrink-0 w-full h-full relative flex justify-center items-center ${
+                index === fullBleedIndex ? '' : 'p-6'
+              }`}
             >
-              <div className="relative w-full h-full max-w-sm max-h-64">
+              <div className={`relative w-full h-full ${index === fullBleedIndex ? '' : 'max-w-sm max-h-64'}`}>
                 {/* Use regular img instead of Next.js Image for better html2canvas compatibility */}
                 <img
                   src={image}
@@ -65,26 +70,27 @@ export default function Carousel({
 
         {/* Navigation arrows - conditionally render based on hideNavigation prop */}
         {images.length > 1 && !hideNavigation && (
-          <>
+          // Top right, sized to line up with the draw button in the top left
+          <div className="absolute top-2 right-2 flex gap-1.5">
             <button
               onClick={prevSlide}
-              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors duration-200 backdrop-blur-sm"
+              className="flex items-center justify-center w-9 h-9 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors duration-200 backdrop-blur-sm"
               aria-label="Previous image"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <button
               onClick={nextSlide}
-              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors duration-200 backdrop-blur-sm"
+              className="flex items-center justify-center w-9 h-9 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors duration-200 backdrop-blur-sm"
               aria-label="Next image"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>

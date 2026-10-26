@@ -3,24 +3,38 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 
-// Drawn routes are exported to match the preset route PNGs: same canvas size, colour and stroke weight
-const OUTPUT_WIDTH = 555;
-const OUTPUT_HEIGHT = 457;
-const OUTPUT_STROKE = 14;
 const ROUTE_COLOR = '#FC5200';
-// Presets keep their route centred inside roughly this box
-const FIT_WIDTH = 440;
-const FIT_HEIGHT = 340;
-const MAX_FIT_SCALE = 2.5;
+// Preset route PNGs are 555x457 with 14px strokes, shown inside the carousel slide's 24px padding.
+// Drawn strokes use the same on-screen weight so they read like the presets.
+const PRESET_WIDTH = 555;
+const PRESET_HEIGHT = 457;
+const PRESET_STROKE = 14;
+const SLIDE_PADDING = 24;
 
-// Points are normalised to 0..1 within the drawing area, so strokes survive resizes
+// Points are CSS px offsets from the centre of the drawing area, so strokes stay put on resize
 type Point = { x: number; y: number };
 export type Stroke = Point[];
+export type DrawnRoute = { src: string; strokes: Stroke[] };
 
 type MapPoint = (p: Point) => [number, number];
 
-// Smooths a stroke through the midpoints between samples. The live, incremental drawing in
-// DrawRoutePanel follows the exact same path, so a full redraw (undo, resize) looks identical.
+function strokeWidthFor(width: number, height: number) {
+    const presetScale = Math.min(
+        (width - SLIDE_PADDING * 2) / PRESET_WIDTH,
+        (height - SLIDE_PADDING * 2) / PRESET_HEIGHT,
+    );
+    return PRESET_STROKE * presetScale;
+}
+
+function setRouteStyle(ctx: CanvasRenderingContext2D, lineWidth: number) {
+    ctx.strokeStyle = ROUTE_COLOR;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+}
+
+// Smooths a stroke through the midpoints between samples. The live, incremental drawing below
+// follows the exact same path, so a full redraw (undo, resize, export) looks identical.
 function traceStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, map: MapPoint) {
     const [x0, y0] = map(stroke[0]);
     ctx.beginPath();
@@ -43,71 +57,62 @@ function traceStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, map: MapPoin
     ctx.stroke();
 }
 
-function setRouteStyle(ctx: CanvasRenderingContext2D, lineWidth: number) {
-    ctx.strokeStyle = ROUTE_COLOR;
-    ctx.fillStyle = ROUTE_COLOR;
-    ctx.lineWidth = lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-}
-
-// Renders the strokes as a transparent PNG, centred and scaled like the preset routes
-function renderRoute(strokes: Stroke[]): string {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const stroke of strokes) {
-        for (const p of stroke) {
-            const x = p.x * OUTPUT_WIDTH;
-            const y = p.y * OUTPUT_HEIGHT;
-            minX = Math.min(minX, x);
-            maxX = Math.max(maxX, x);
-            minY = Math.min(minY, y);
-            maxY = Math.max(maxY, y);
-        }
-    }
-
-    const boxWidth = Math.max(maxX - minX, 1);
-    const boxHeight = Math.max(maxY - minY, 1);
-    const scale = Math.min(FIT_WIDTH / boxWidth, FIT_HEIGHT / boxHeight, MAX_FIT_SCALE);
-    const offsetX = (OUTPUT_WIDTH - boxWidth * scale) / 2 - minX * scale;
-    const offsetY = (OUTPUT_HEIGHT - boxHeight * scale) / 2 - minY * scale;
-
+// Renders the strokes exactly as drawn, at the drawing area's size, as a transparent PNG
+function renderRoute(strokes: Stroke[], width: number, height: number): string {
+    const scale = Math.max(2, window.devicePixelRatio || 1);
     const canvas = document.createElement('canvas');
-    canvas.width = OUTPUT_WIDTH;
-    canvas.height = OUTPUT_HEIGHT;
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
     const ctx = canvas.getContext('2d')!;
-    setRouteStyle(ctx, OUTPUT_STROKE);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    setRouteStyle(ctx, strokeWidthFor(width, height));
 
-    const map: MapPoint = (p) => [
-        p.x * OUTPUT_WIDTH * scale + offsetX,
-        p.y * OUTPUT_HEIGHT * scale + offsetY,
-    ];
+    const map: MapPoint = (p) => [p.x + width / 2, p.y + height / 2];
     strokes.forEach((stroke) => traceStroke(ctx, stroke, map));
 
     return canvas.toDataURL('image/png');
 }
 
-interface DrawRouteModalProps {
-    open: boolean;
+interface RouteDrawLayerProps {
+    isDrawing: boolean;
     initialStrokes: Stroke[];
+    onStart: () => void;
     onCancel: () => void;
-    onDone: (route: { src: string; strokes: Stroke[] }) => void;
+    // null when everything was cleared
+    onDone: (route: DrawnRoute | null) => void;
 }
 
-export default function DrawRouteModal({ open, ...panelProps }: DrawRouteModalProps) {
+// Sits over the route carousel: a Draw button, and while drawing, a grid and canvas covering the same area
+export default function RouteDrawLayer({ isDrawing, onStart, ...drawingProps }: RouteDrawLayerProps) {
     return (
-        <AnimatePresence>
-            {open && (
-                <motion.div
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+        <>
+            <AnimatePresence>
+                {isDrawing && (
+                    <motion.div
+                        className="absolute inset-0"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3, ease: 'easeOut' }}
+                    >
+                        <DrawingSurface {...drawingProps} />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {!isDrawing && (
+                <button
+                    onClick={onStart}
+                    aria-label="Draw your own route"
+                    title="Draw your own route"
+                    className="absolute top-2 left-2 flex items-center justify-center w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-colors duration-200"
                 >
-                    <DrawRoutePanel {...panelProps} />
-                </motion.div>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.862 4.487a2.1 2.1 0 1 1 2.97 2.97L8.5 18.79l-4 1 1-4L16.862 4.487Z" />
+                    </svg>
+                </button>
             )}
-        </AnimatePresence>
+        </>
     );
 }
 
@@ -120,7 +125,7 @@ interface ActiveStroke {
     rect: DOMRect;
 }
 
-function DrawRoutePanel({ initialStrokes, onCancel, onDone }: Omit<DrawRouteModalProps, 'open'>) {
+function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLayerProps, 'isDrawing' | 'onStart'>) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const strokesRef = useRef<Stroke[]>(initialStrokes.map((stroke) => [...stroke]));
     const activeRef = useRef<ActiveStroke | null>(null);
@@ -129,7 +134,7 @@ function DrawRoutePanel({ initialStrokes, onCancel, onDone }: Omit<DrawRouteModa
     // Only updated when a stroke starts or ends, never per pointer move
     const [strokeCount, setStrokeCount] = useState(strokesRef.current.length);
 
-    const toPixels: MapPoint = (p) => [p.x * sizeRef.current.width, p.y * sizeRef.current.height];
+    const toPixels: MapPoint = (p) => [p.x + sizeRef.current.width / 2, p.y + sizeRef.current.height / 2];
 
     const getContext = () => canvasRef.current?.getContext('2d') ?? null;
 
@@ -138,11 +143,11 @@ function DrawRoutePanel({ initialStrokes, onCancel, onDone }: Omit<DrawRouteModa
         if (!ctx) return;
         const { width, height } = sizeRef.current;
         ctx.clearRect(0, 0, width, height);
-        setRouteStyle(ctx, (OUTPUT_STROKE * width) / OUTPUT_WIDTH);
+        setRouteStyle(ctx, strokeWidthFor(width, height));
         strokesRef.current.forEach((stroke) => traceStroke(ctx, stroke, toPixels));
     }, []);
 
-    // Keep the backing store at device resolution and redraw from the normalised strokes on resize
+    // Keep the backing store at device resolution and redraw on resize
     useLayoutEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -195,8 +200,8 @@ function DrawRoutePanel({ initialStrokes, onCancel, onDone }: Omit<DrawRouteModa
     }, []);
 
     const toPoint = (e: { clientX: number; clientY: number }, rect: DOMRect): Point => ({
-        x: (e.clientX - rect.left) / rect.width,
-        y: (e.clientY - rect.top) / rect.height,
+        x: e.clientX - rect.left - rect.width / 2,
+        y: e.clientY - rect.top - rect.height / 2,
     });
 
     const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -220,8 +225,8 @@ function DrawRoutePanel({ initialStrokes, onCancel, onDone }: Omit<DrawRouteModa
         for (const sample of samples.length > 0 ? samples : [e.nativeEvent]) {
             const point = toPoint(sample, active.rect);
             const last = active.points[active.points.length - 1];
-            const dx = (point.x - last.x) * active.rect.width;
-            const dy = (point.y - last.y) * active.rect.height;
+            const dx = point.x - last.x;
+            const dy = point.y - last.y;
             if (dx * dx + dy * dy >= 1) active.points.push(point);
         }
         scheduleDraw();
@@ -265,8 +270,9 @@ function DrawRoutePanel({ initialStrokes, onCancel, onDone }: Omit<DrawRouteModa
     };
 
     const done = () => {
-        if (strokesRef.current.length === 0) return;
-        onDone({ src: renderRoute(strokesRef.current), strokes: strokesRef.current });
+        const strokes = strokesRef.current;
+        const { width, height } = sizeRef.current;
+        onDone(strokes.length > 0 ? { src: renderRoute(strokes, width, height), strokes } : null);
     };
 
     useEffect(() => {
@@ -282,67 +288,56 @@ function DrawRoutePanel({ initialStrokes, onCancel, onDone }: Omit<DrawRouteModa
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [onCancel, undo]);
 
-    const toolButtonClass = 'h-9 px-4 rounded-full bg-white/10 hover:bg-white/15 text-white text-sm font-medium transition-colors duration-200 disabled:opacity-40 disabled:pointer-events-none';
+    const toolButtonClass = 'h-9 px-3.5 rounded-full bg-white/10 hover:bg-white/15 text-white text-sm font-medium backdrop-blur-sm transition-colors duration-200 disabled:opacity-40 disabled:pointer-events-none';
 
     return (
-        <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Draw your route"
-            className="flex flex-col gap-4 w-full max-w-[640px] p-4 sm:p-6 rounded-4xl bg-background-secondary"
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+        <div
+            className="relative w-full h-full overflow-hidden rounded-lg"
+            style={{
+                backgroundImage:
+                    'linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px)',
+                backgroundSize: '20px 20px',
+                backgroundPosition: 'center',
+            }}
         >
-            <div className="flex items-center justify-between gap-3">
-                <p className="text-lg font-semibold text-white">Draw your route</p>
-                <div className="flex gap-2">
-                    <button onClick={undo} disabled={strokeCount === 0} className={toolButtonClass}>Undo</button>
-                    <button onClick={clear} disabled={strokeCount === 0} className={toolButtonClass}>Clear</button>
-                </div>
+            <canvas
+                ref={canvasRef}
+                aria-label="Route drawing area"
+                className="absolute inset-0 w-full h-full touch-none cursor-crosshair"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerEnd}
+                onPointerCancel={handlePointerEnd}
+            />
+
+            {strokeCount === 0 && (
+                <p className="absolute inset-0 flex items-center justify-center pointer-events-none text-white/30 text-sm">
+                    Draw your route
+                </p>
+            )}
+
+            <div className="absolute top-2 left-2 flex gap-1.5">
+                <button onClick={undo} disabled={strokeCount === 0} className={toolButtonClass}>Undo</button>
+                <button onClick={clear} disabled={strokeCount === 0} className={toolButtonClass}>Clear</button>
             </div>
 
-            <div
-                className="relative w-full overflow-hidden rounded-2xl"
-                style={{
-                    aspectRatio: `${OUTPUT_WIDTH} / ${OUTPUT_HEIGHT}`,
-                    backgroundImage:
-                        'linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px)',
-                    backgroundSize: '24px 24px',
-                    backgroundPosition: 'center',
-                }}
-            >
-                <canvas
-                    ref={canvasRef}
-                    className="absolute inset-0 w-full h-full touch-none cursor-crosshair"
-                    onPointerDown={handlePointerDown}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerEnd}
-                    onPointerCancel={handlePointerEnd}
-                />
-                {strokeCount === 0 && (
-                    <p className="absolute inset-0 flex items-center justify-center pointer-events-none text-white/30 text-sm">
-                        Draw your route here
-                    </p>
-                )}
-            </div>
-
-            <div className="flex gap-3">
+            <div className="absolute top-2 right-2 flex gap-1.5">
                 <button
                     onClick={onCancel}
-                    className="flex-1 h-12 rounded-full bg-white/10 hover:bg-white/15 text-white font-medium text-lg transition-colors duration-200"
+                    aria-label="Cancel drawing"
+                    className="flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/15 text-white backdrop-blur-sm transition-colors duration-200"
                 >
-                    Cancel
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6l12 12M18 6L6 18" />
+                    </svg>
                 </button>
                 <button
                     onClick={done}
-                    disabled={strokeCount === 0}
-                    className="flex-1 h-12 rounded-full bg-white text-background-secondary font-medium text-lg transition-opacity duration-200 disabled:opacity-40"
+                    className="h-9 px-4 rounded-full bg-white text-background-secondary text-sm font-medium transition-opacity duration-200 hover:opacity-90"
                 >
                     Done
                 </button>
             </div>
-        </motion.div>
+        </div>
     );
 }
