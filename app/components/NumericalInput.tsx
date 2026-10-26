@@ -5,7 +5,6 @@ import { motion } from 'motion/react';
 
 // Configuration for number segments
 interface NumberSegmentConfig {
-    initialValue: number;
     maxDigits: number;
     decimalPlaces?: number;
     minValue?: number;
@@ -34,16 +33,20 @@ interface NumericalInputConfig {
         height?: number; // Height in pixels
     };
     className?: string;
-    animateOnMount?: boolean;
-    animateToZeroDelay?: number;
     labelGap?: number; // Gap between label and content in pixels
 }
 
-interface NumericalInputProps extends NumericalInputConfig { }
+// Values are controlled by the parent, one per segment
+interface NumericalInputProps extends NumericalInputConfig {
+    values: number[];
+    onChange: (values: number[]) => void;
+    onEditEnd?: () => void;
+}
 
-const DEFAULT_ANIMATE_TO_ZERO_DELAY_MS = 1000;
-// When the on-mount roll to zero has visibly settled: the delay above plus ~1.6s for the digit spring
-export const NUMBER_INTRO_SETTLED_MS = DEFAULT_ANIMATE_TO_ZERO_DELAY_MS + 1600;
+// The card shows example numbers on load, then rolls them to zero after this delay
+export const NUMBER_INTRO_DELAY_MS = 1000;
+// When that roll has visibly settled: the delay above plus ~1.6s for the digit spring
+export const NUMBER_INTRO_SETTLED_MS = NUMBER_INTRO_DELAY_MS + 1600;
 
 // Enhanced rolling effect with intermediate values  
 interface EnhancedRollingDigitProps {
@@ -257,11 +260,11 @@ export default function NumericalInput({
     suffixes,
     suffix, // Keep for backward compatibility
     className = '',
-    animateOnMount = false,
-    animateToZeroDelay = DEFAULT_ANIMATE_TO_ZERO_DELAY_MS,
-    labelGap = 18 // Default gap of 18px
+    labelGap = 18, // Default gap of 18px
+    values,
+    onChange,
+    onEditEnd,
 }: NumericalInputProps) {
-    const [displayValues, setDisplayValues] = useState(segments.map(s => s.initialValue));
     const [isEditing, setIsEditing] = useState(false);
     const [currentSegment, setCurrentSegment] = useState(0);
     const [inputDigits, setInputDigits] = useState('');
@@ -276,18 +279,6 @@ export default function NumericalInput({
         'Time': '/images/labels/labelTime.png',
         'Pace': '/images/labels/labelPace.png',
     };
-
-    // Animate to zero on mount if configured. Depends on segments.length, not segments:
-    // callers pass a fresh array each render, which would re-zero values on every re-render.
-    useEffect(() => {
-        if (animateOnMount) {
-            const timer = setTimeout(() => {
-                setDisplayValues(Array(segments.length).fill(0));
-            }, animateToZeroDelay);
-
-            return () => clearTimeout(timer);
-        }
-    }, [animateOnMount, animateToZeroDelay, segments.length]);
 
     // Convert input digits to display value for current segment
     const getDisplayValueFromDigits = (digits: string, segmentConfig: NumberSegmentConfig): number => {
@@ -340,6 +331,12 @@ export default function NumericalInput({
         }
     };
 
+    // Can run more than once for one edit (e.g. finishing the last segment, then the input blurring)
+    const endEditing = () => {
+        setIsEditing(false);
+        onEditEnd?.();
+    };
+
     const handleClick = () => {
         console.log('Click handler triggered');
         setIsEditing(true);
@@ -362,7 +359,7 @@ export default function NumericalInput({
             setInputDigits('');
             setCursorPosition(getCursorDisplayPosition(currentSegment + 1, 0));
         } else {
-            setIsEditing(false);
+            endEditing();
             setCursorPosition(-1);
         }
     };
@@ -379,9 +376,9 @@ export default function NumericalInput({
                 setInputDigits(newDigits);
                 setCursorPosition(getCursorDisplayPosition(currentSegment, newDigits.length));
 
-                const newValues = [...displayValues];
+                const newValues = [...values];
                 newValues[currentSegment] = getDisplayValueFromDigits(newDigits, currentConfig);
-                setDisplayValues(newValues);
+                onChange(newValues);
 
                 // Auto-advance to next segment when current is complete
                 if (newDigits.length === currentConfig.maxDigits) {
@@ -395,9 +392,9 @@ export default function NumericalInput({
                 setInputDigits(newDigits);
                 setCursorPosition(getCursorDisplayPosition(currentSegment, newDigits.length));
 
-                const newValues = [...displayValues];
+                const newValues = [...values];
                 newValues[currentSegment] = getDisplayValueFromDigits(newDigits, currentConfig);
-                setDisplayValues(newValues);
+                onChange(newValues);
             } else if (currentSegment > 0) {
                 // Move to previous segment
                 setCurrentSegment(currentSegment - 1);
@@ -408,7 +405,7 @@ export default function NumericalInput({
             e.preventDefault();
             moveToNextSegment();
         } else if (e.key === 'Escape') {
-            setIsEditing(false);
+            endEditing();
             setInputDigits('');
             setCursorPosition(-1);
         }
@@ -431,9 +428,9 @@ export default function NumericalInput({
                     setInputDigits(newDigits);
                     setCursorPosition(getCursorDisplayPosition(currentSegment, newDigits.length));
 
-                    const newValues = [...displayValues];
+                    const newValues = [...values];
                     newValues[currentSegment] = getDisplayValueFromDigits(newDigits, currentConfig);
-                    setDisplayValues(newValues);
+                    onChange(newValues);
 
                     // Auto-advance to next segment when current is complete
                     if (newDigits.length === currentConfig.maxDigits) {
@@ -464,9 +461,9 @@ export default function NumericalInput({
                 setInputDigits(newDigits);
                 setCursorPosition(getCursorDisplayPosition(currentSegment, newDigits.length));
 
-                const newValues = [...displayValues];
+                const newValues = [...values];
                 newValues[currentSegment] = getDisplayValueFromDigits(newDigits, currentConfig);
-                setDisplayValues(newValues);
+                onChange(newValues);
             } else if (currentSegment > 0) {
                 // Move to previous segment
                 setCurrentSegment(currentSegment - 1);
@@ -477,21 +474,21 @@ export default function NumericalInput({
             e.preventDefault();
             moveToNextSegment();
         } else if (e.key === 'Escape') {
-            setIsEditing(false);
+            endEditing();
             setInputDigits('');
             setCursorPosition(-1);
         }
     };
 
     const handleBlur = () => {
-        setIsEditing(false);
+        endEditing();
         setCursorPosition(-1);
     };
 
     const handleHiddenInputBlur = () => {
         // Small delay to allow other interactions to complete
         setTimeout(() => {
-            setIsEditing(false);
+            endEditing();
             setCursorPosition(-1);
         }, 100);
     };
@@ -510,7 +507,7 @@ export default function NumericalInput({
             document.addEventListener('keydown', handleKeyDown);
             return () => document.removeEventListener('keydown', handleKeyDown);
         }
-    }, [isEditing, inputDigits, currentSegment]);
+    }, [isEditing, inputDigits, currentSegment, values, onChange]);
 
     // Combine legacy suffix with new suffixes array for backward compatibility
     const allSuffixes = suffixes || (suffix ? [suffix] : []);
@@ -569,7 +566,7 @@ export default function NumericalInput({
                 {segments.map((segmentConfig, index) => (
                     <div key={index} className="flex items-baseline">
                         <AnimatedNumberSegment
-                            value={displayValues[index]}
+                            value={values[index]}
                             config={segmentConfig}
                             className="flex items-center"
                             isHovered={isHovered}
@@ -642,52 +639,58 @@ const unitImageMap: Record<DistanceUnit, string> = {
     mi: '/images/letters/mi.svg',
 };
 
-export function DistanceInput({ initialValue = 0, unit = 'km', className = '' }: {
-    initialValue?: number;
-    unit?: DistanceUnit;
+// The most each field can display; the run math clamps to these
+export const MAX_DISTANCE = 99.99;
+export const MAX_PACE_SECONDS = 9 * 60 + 59;
+export const MAX_TIME_SECONDS = 99 * 60 + 59;
+
+const toMinutesAndSeconds = (totalSeconds: number) => [Math.floor(totalSeconds / 60), totalSeconds % 60];
+const fromMinutesAndSeconds = ([minutes, seconds]: number[]) => minutes * 60 + seconds;
+
+interface FieldInputProps {
+    value: number;
+    onChange: (value: number) => void;
+    onEditEnd?: () => void;
     className?: string;
-}) {
+}
+
+export function DistanceInput({ value, onChange, onEditEnd, unit = 'km', className = '' }: FieldInputProps & { unit?: DistanceUnit }) {
     return (
         <NumericalInput
             label="Distance"
             segments={[
                 {
-                    initialValue,
                     maxDigits: 4,
                     decimalPlaces: 2,
                     minValue: 0,
-                    maxValue: 99.99,
+                    maxValue: MAX_DISTANCE,
                     padStart: 2
                 }
             ]}
             suffix={{
                 imagePath: unitImageMap[unit]
             }}
+            values={[value]}
+            onChange={([distance]) => onChange(distance)}
+            onEditEnd={onEditEnd}
             className={className}
-            animateOnMount={true}
             labelGap={18}
         />
     );
 }
 
-export function PaceInput({ initialMinutes = 0, initialSeconds = 0, unit = 'km', className = '' }: {
-    initialMinutes?: number;
-    initialSeconds?: number;
-    unit?: DistanceUnit;
-    className?: string;
-}) {
+// value is total seconds per unit of distance
+export function PaceInput({ value, onChange, onEditEnd, unit = 'km', className = '' }: FieldInputProps & { unit?: DistanceUnit }) {
     return (
         <NumericalInput
             label="Pace"
             segments={[
                 {
-                    initialValue: initialMinutes,
                     maxDigits: 1,
                     minValue: 0,
                     maxValue: 9
                 },
                 {
-                    initialValue: initialSeconds,
                     maxDigits: 2,
                     minValue: 0,
                     maxValue: 59,
@@ -702,31 +705,28 @@ export function PaceInput({ initialMinutes = 0, initialSeconds = 0, unit = 'km',
                 { imagePath: '/images/letters/slash.png', height: 40 },
                 { imagePath: unitImageMap[unit], height: 35 },
             ]}
+            values={toMinutesAndSeconds(value)}
+            onChange={(segments) => onChange(fromMinutesAndSeconds(segments))}
+            onEditEnd={onEditEnd}
             className={className}
-            animateOnMount={true}
             labelGap={15}
         />
     );
 }
 
-export function TimeInput({ initialMinutes = 0, initialSeconds = 0, className = '' }: {
-    initialMinutes?: number;
-    initialSeconds?: number;
-    className?: string;
-}) {
+// value is total seconds
+export function TimeInput({ value, onChange, onEditEnd, className = '' }: FieldInputProps) {
     return (
         <NumericalInput
             label="Time"
             segments={[
                 {
-                    initialValue: initialMinutes,
                     maxDigits: 2,
                     minValue: 0,
                     maxValue: 99,
                     padStart: 2
                 },
                 {
-                    initialValue: initialSeconds,
                     maxDigits: 2,
                     minValue: 0,
                     maxValue: 59,
@@ -737,8 +737,10 @@ export function TimeInput({ initialMinutes = 0, initialSeconds = 0, className = 
                 { imagePath: '/images/letters/m.png', height: 35 },
                 { imagePath: '/images/letters/s.png', height: 35 },
             ]}
+            values={toMinutesAndSeconds(value)}
+            onChange={(segments) => onChange(fromMinutesAndSeconds(segments))}
+            onEditEnd={onEditEnd}
             className={className}
-            animateOnMount={true}
             labelGap={17}
         />
     );

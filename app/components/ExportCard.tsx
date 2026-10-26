@@ -1,12 +1,21 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { DistanceInput, PaceInput, TimeInput, NUMBER_INTRO_SETTLED_MS, type DistanceUnit } from "./NumericalInput";
+import {
+  DistanceInput, PaceInput, TimeInput, NUMBER_INTRO_DELAY_MS, NUMBER_INTRO_SETTLED_MS, type DistanceUnit,
+} from "./NumericalInput";
 import Carousel from "./Carousel";
 import RouteDrawLayer, { type DrawnRoute } from "./RouteDrawLayer";
+import { solveRun, type RunField, type RunStats } from "../lib/runMath";
 
 const units: DistanceUnit[] = ['km', 'mi'];
+
+// Example numbers shown on load before they roll to zero
+const INTRO_RUN: RunStats = { distance: 10.93, paceSeconds: 7 * 60 + 15, timeSeconds: 33 * 60 + 47 };
+const EMPTY_RUN: RunStats = { distance: 0, paceSeconds: 0, timeSeconds: 0 };
+
+const runStatKey: Record<RunField, keyof RunStats> = { distance: 'distance', pace: 'paceSeconds', time: 'timeSeconds' };
 
 interface ExportCardProps {
   carouselImages: string[];
@@ -19,6 +28,11 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
   const [isDrawing, setIsDrawing] = useState(false);
   // The user's own route lives in one slot after the presets; redrawing replaces it
   const [drawnRoute, setDrawnRoute] = useState<DrawnRoute | null>(null);
+  const [run, setRun] = useState<RunStats>(INTRO_RUN);
+  // Most recently edited first: the last field is worked out from the other two (time, by default)
+  const editOrderRef = useRef<RunField[]>(['pace', 'distance', 'time']);
+  // The field whose value changed during the current edit, so just opening and closing one doesn't count
+  const changedFieldRef = useRef<RunField | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   const logoRef = useRef<HTMLParagraphElement>(null);
   const ishRef = useRef<HTMLSpanElement>(null);
@@ -33,6 +47,25 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
     setLogoShift((ish.offsetLeft + ish.offsetWidth - logo.offsetWidth) / 2);
   };
   useLayoutEffect(measureLogoShift, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setRun(EMPTY_RUN), NUMBER_INTRO_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleRunChange = (field: RunField, value: number) => {
+    changedFieldRef.current = field;
+    setRun((prev) => ({ ...prev, [runStatKey[field]]: value }));
+  };
+
+  // Once an edit finishes, the two most recently edited fields decide the third
+  const handleRunEditEnd = (field: RunField) => {
+    if (changedFieldRef.current !== field) return;
+    changedFieldRef.current = null;
+    const order = [field, ...editOrderRef.current.filter((f) => f !== field)];
+    editOrderRef.current = order;
+    setRun((prev) => solveRun(prev, order[2]));
+  };
 
   const routeImages = drawnRoute ? [...carouselImages, drawnRoute.src] : carouselImages;
 
@@ -98,9 +131,23 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
         }`}
       >
         <div className="flex flex-col justify-center items-center gap-[42px] w-full">
-          <DistanceInput initialValue={10.93} unit={unit} />
-          <PaceInput initialMinutes={7} initialSeconds={15} unit={unit} />
-          <TimeInput initialMinutes={33} initialSeconds={47} />
+          <DistanceInput
+            value={run.distance}
+            onChange={(v) => handleRunChange('distance', v)}
+            onEditEnd={() => handleRunEditEnd('distance')}
+            unit={unit}
+          />
+          <PaceInput
+            value={run.paceSeconds}
+            onChange={(v) => handleRunChange('pace', v)}
+            onEditEnd={() => handleRunEditEnd('pace')}
+            unit={unit}
+          />
+          <TimeInput
+            value={run.timeSeconds}
+            onChange={(v) => handleRunChange('time', v)}
+            onEditEnd={() => handleRunEditEnd('time')}
+          />
         </div>
         
         <div className="relative w-full">
@@ -158,8 +205,8 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
         </motion.p>
       </div>
 
-      <div className="flex flex-col items-center gap-3 w-[360px] sm:w-[480px]">
-        <div role="radiogroup" aria-label="Distance unit" className="relative flex w-1/2 h-12 p-1 rounded-full bg-background-secondary">
+      <div className="flex items-center gap-3 w-[360px] sm:w-[480px]">
+        <div role="radiogroup" aria-label="Distance unit" className="relative flex shrink-0 w-32 h-12 p-1 rounded-full bg-background-secondary">
           {/* Sliding pill: half the track wide, so translating by its own width lands on the other option */}
           <motion.div
             className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-white/75"
@@ -185,7 +232,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
         <button
           onClick={handleExport}
           disabled={isExporting}
-          className="h-12 bg-strava w-full hover:brightness-110 disabled:opacity-60 text-white font-medium text-lg rounded-full transition-[filter,opacity] duration-200"
+          className="h-12 bg-strava flex-1 hover:brightness-110 disabled:opacity-60 text-white font-medium text-lg rounded-full transition-[filter,opacity] duration-200"
         >
           {isExporting ? 'Exporting...' : 'Export'}
         </button>
