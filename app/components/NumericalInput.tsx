@@ -1,43 +1,18 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
+import {
+    DIGIT_GLYPHS, ROW_HEIGHT, STACK_TOP, charGap, distanceField, formatSegment, fromMinutesAndSeconds, glyphForChar,
+    paceField, timeField, toMinutesAndSeconds, type DistanceUnit, type FieldLayout, type Glyph, type SegmentConfig,
+} from '../lib/stravaLayout';
 
-// Configuration for number segments
-interface NumberSegmentConfig {
-    maxDigits: number;
-    decimalPlaces?: number;
-    minValue?: number;
-    maxValue?: number;
-    padStart?: number; // Total digits to pad to
-}
-
-// Configuration for the entire input
-interface NumericalInputConfig {
-    label: string;
-    segments: NumberSegmentConfig[];
-    separators?: Array<{
-        text?: string;
-        imagePath?: string; // Path to SVG for separator
-        height?: number; // Height in pixels for this specific separator
-    } | string>; // Support both new object format and legacy string format
-    suffixes?: Array<{
-        text?: string;
-        imagePath?: string; // Path to SVG for suffix
-        height?: number; // Height in pixels for this specific suffix
-    }>; // Array of suffixes to be displayed after all segments
-    // Keep backward compatibility
-    suffix?: {
-        text?: string;
-        imagePath?: string; // Path to SVG for suffix
-        height?: number; // Height in pixels
-    };
-    className?: string;
-    labelGap?: number; // Gap between label and content in pixels
-}
+// Card pixels per native (1080-wide canvas) pixel; the card sets it to fit the screen
+export const CardScaleContext = createContext(0.5);
 
 // Values are controlled by the parent, one per segment
-interface NumericalInputProps extends NumericalInputConfig {
+interface NumericalInputProps {
+    field: FieldLayout;
     values: number[];
     onChange: (values: number[]) => void;
     onEditEnd?: () => void;
@@ -48,112 +23,55 @@ export const NUMBER_INTRO_DELAY_MS = 1000;
 // When that roll has visibly settled: the delay above plus ~1.6s for the digit spring
 export const NUMBER_INTRO_SETTLED_MS = NUMBER_INTRO_DELAY_MS + 1600;
 
-// Enhanced rolling effect with intermediate values  
-interface EnhancedRollingDigitProps {
-    currentDigit: string;
-    previousDigit: string;
-    className?: string;
+const allDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
+function GlyphImage({ glyph, alt, scale }: { glyph: Glyph; alt: string; scale: number }) {
+    return (
+        <img
+            src={glyph.src}
+            alt={alt}
+            className="block max-w-none shrink-0"
+            style={{ width: glyph.width * scale, height: glyph.height * scale, marginTop: glyph.top * scale }}
+        />
+    );
 }
 
-function EnhancedRollingDigit({ currentDigit, previousDigit, className = '' }: EnhancedRollingDigitProps) {
-    const digitImageMap: { [key: string]: string } = {
-        '0': '/images/digits/zero.png',
-        '1': '/images/digits/one.png',
-        '2': '/images/digits/two.png',
-        '3': '/images/digits/three.png',
-        '4': '/images/digits/four.png',
-        '5': '/images/digits/five.png',
-        '6': '/images/digits/six.png',
-        '7': '/images/digits/seven.png',
-        '8': '/images/digits/eight.png',
-        '9': '/images/digits/nine.png',
-        '.': '/images/digits/dot.png',
-        ':': '/images/digits/dot.png', // Reuse dot for colon
-    };
-
-    const allDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-    const digitHeight = 35;
-
-    if (['.', ':'].includes(currentDigit) || ['.', ':'].includes(previousDigit)) {
-        return (
-            <div className={`relative ${className}`} style={{ height: digitHeight }}>
-                <img
-                    src={digitImageMap[currentDigit] || digitImageMap['.']}
-                    alt={currentDigit}
-                    className="w-2 h-10 object-contain"
-                />
-            </div>
-        );
-    }
+// One digit that rolls through the digits between its previous and current value
+function RollingDigit({ currentDigit, previousDigit }: { currentDigit: string; previousDigit: string }) {
+    const scale = useContext(CardScaleContext);
+    const cellHeight = ROW_HEIGHT * scale;
 
     const currentIndex = allDigits.indexOf(currentDigit);
     const previousIndex = allDigits.indexOf(previousDigit);
-
-    // Determine direction and create digit sequence
-    let digitSequence: string[] = [];
-
-    if (currentIndex > previousIndex) {
-        // Going up: show digits from previous to current
-        for (let i = previousIndex; i <= currentIndex; i++) {
-            digitSequence.push(allDigits[i]);
-        }
-    } else if (currentIndex < previousIndex) {
-        // Going down: show digits from previous down to current
-        for (let i = previousIndex; i >= currentIndex; i--) {
-            digitSequence.push(allDigits[i]);
-        }
-    } else {
-        // Same digit
-        digitSequence = [currentDigit];
-    }
-
-    // Position to show the target digit (last in sequence)
-    const targetPosition = -(digitSequence.length - 1) * digitHeight;
+    const step = currentIndex >= previousIndex ? 1 : -1;
+    const digitSequence: string[] = [];
+    for (let i = previousIndex; i !== currentIndex + step; i += step) digitSequence.push(allDigits[i]);
 
     return (
+        // Clip only vertically, so wider digits rolling past aren't cut at the sides
         <div
-            className={`relative overflow-hidden ${className}`}
-            style={{ height: digitHeight }}
+            className="relative shrink-0 transition-[width] duration-300"
+            style={{ width: DIGIT_GLYPHS[currentDigit].width * scale, height: cellHeight, clipPath: 'inset(0 -40px)' }}
         >
-            {/* CSS mask for smooth edges */}
-            <div
-                className="absolute inset-0 z-10 pointer-events-none"
-                style={{
-                    maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
-                    WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)'
-                }}
-            />
-
             <motion.div
-                className="flex flex-col"
+                className="flex flex-col items-center"
                 initial={{ y: 0 }}
-                animate={{ y: targetPosition }}
-                transition={{
-                    type: "spring",
-                    stiffness: 100,
-                    damping: 30,
-                    duration: 1.5
-                }}
+                animate={{ y: -(digitSequence.length - 1) * cellHeight }}
+                transition={{ type: 'spring', stiffness: 100, damping: 30 }}
             >
                 {digitSequence.map((digit, index) => (
-                    <img
-                        key={`${digit}-${index}`}
-                        src={digitImageMap[digit]}
-                        alt={digit}
-                        className="w-8 object-contain flex-shrink-0"
-                        style={{ height: digitHeight }}
-                    />
+                    <div key={`${digit}-${index}`} className="shrink-0" style={{ height: cellHeight }}>
+                        <GlyphImage glyph={DIGIT_GLYPHS[digit]} alt={digit} scale={scale} />
+                    </div>
                 ))}
             </motion.div>
         </div>
     );
 }
 
-// Component for animated number segment
 interface AnimatedNumberSegmentProps {
     value: number;
-    config: NumberSegmentConfig;
-    className?: string;
+    config: SegmentConfig;
     isHovered?: boolean;
     isEditing?: boolean;
     cursorPosition?: number;
@@ -163,88 +81,54 @@ interface AnimatedNumberSegmentProps {
 function AnimatedNumberSegment({
     value,
     config,
-    className = '',
     isHovered = false,
     isEditing = false,
     cursorPosition = -1,
     segmentIndex
 }: AnimatedNumberSegmentProps) {
-    const [previousValue, setPreviousValue] = useState(value);
+    const scale = useContext(CardScaleContext);
+    // Digits roll from the first value they showed
+    const [previousValue] = useState(value);
 
-    useEffect(() => {
-        if (value !== previousValue) {
-            setPreviousValue(previousValue);
-        }
-    }, [value]);
-
-    // Format the number based on config
-    const formatNumber = (num: number): string => {
-        let formatted: string;
-
-        if (config.decimalPlaces !== undefined) {
-            formatted = num.toFixed(config.decimalPlaces);
-        } else {
-            formatted = num.toString();
-        }
-
-        if (config.padStart) {
-            const [integerPart, decimalPart] = formatted.split('.');
-            const paddedInteger = integerPart.padStart(config.padStart, '0');
-            formatted = decimalPart ? `${paddedInteger}.${decimalPart}` : paddedInteger;
-        }
-
-        return formatted;
-    };
-
-    const formattedValue = formatNumber(value);
-    const formattedPrevious = formatNumber(previousValue);
-
-    const currentDigits = formattedValue.split('');
-    const previousDigits = formattedPrevious.split('');
+    // While typing, every digit slot shows (e.g. "03.41"); otherwise leading zeros drop, as on Strava
+    const currentDigits = formatSegment(value, config, isEditing).split('');
+    const previousDigits = formatSegment(previousValue, config).split('');
 
     return (
-        <div className={`flex items-end gap-[1px] relative ${className}`}>
+        <div className="relative flex items-start shrink-0">
             {currentDigits.map((digit, index) => {
-                if (digit === '.' || digit === ':') {
-                    // Static separator - no animation needed
+                // Line digits up from the right, so a dropped leading zero doesn't shift the rest
+                const fromRight = currentDigits.length - index;
+                const marginLeft = charGap(currentDigits[index - 1], digit) * scale;
+
+                if (digit === '.') {
                     return (
-                        <div key={index} className="relative w-2 flex items-end pb-[1px]" style={{ height: 36 }}>
-                            <div className={`relative ${isEditing ? 'opacity-100' : 'opacity-100'} transition-opacity duration-300`}>
-                                <img
-                                    src="/images/digits/dot.png"
-                                    alt={digit}
-                                    className="w-2 h-2 object-contain"
-                                />
-                            </div>
+                        <div key={`r${fromRight}`} className="shrink-0" style={{ marginLeft }}>
+                            <GlyphImage glyph={glyphForChar('.')} alt="." scale={scale} />
                         </div>
                     );
                 }
 
-                // Regular digit with animation
-                const globalIndex = segmentIndex * 100 + index; // Create unique cursor positions
+                const previousDigit = previousDigits[previousDigits.length - fromRight];
+                const globalIndex = segmentIndex * 100 + index; // Unique cursor positions across segments
 
                 return (
-                    <div key={index} className="relative">
-                        <div className={`relative ${isEditing ? 'opacity-30' : 'opacity-100'} transition-opacity duration-300`}>
-                            <EnhancedRollingDigit
-                                currentDigit={digit}
-                                previousDigit={previousDigits[index] || '0'}
-                                className="w-8"
-                            />
+                    <div key={`r${fromRight}`} className="relative shrink-0" style={{ marginLeft }}>
+                        <div className={`${isEditing ? 'opacity-30' : 'opacity-100'} transition-opacity duration-300`}>
+                            <RollingDigit currentDigit={digit} previousDigit={allDigits.includes(previousDigit) ? previousDigit : '0'} />
                         </div>
 
                         {/* Blinking cursor */}
                         {isEditing && cursorPosition === globalIndex && (
-                            <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-gray-800 dark:bg-gray-200 animate-pulse" />
+                            <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-gray-200 animate-pulse" />
                         )}
 
-                        {/* Hover underline for each digit */}
+                        {/* Hover underline for each digit, just under the baseline */}
                         <div
-                            className={`
-                absolute bottom-[-6px] left-0 right-0 h-0.5 bg-gray-800 dark:bg-gray-200
-                transition-opacity duration-200 ease-in-out
-                ${isHovered && !isEditing ? 'opacity-100' : 'opacity-0'}
-              `}
+                            className={`absolute left-0 right-0 h-0.5 bg-gray-200 transition-opacity duration-200 ease-in-out ${
+                                isHovered && !isEditing ? 'opacity-100' : 'opacity-0'
+                            }`}
+                            style={{ top: (ROW_HEIGHT - 2) * scale }}
                         />
                     </div>
                 );
@@ -253,18 +137,15 @@ function AnimatedNumberSegment({
     );
 }
 
+// A label and its value row, placed in the card at the field's position on Strava's canvas
 export default function NumericalInput({
-    label,
-    segments,
-    separators = [],
-    suffixes,
-    suffix, // Keep for backward compatibility
-    className = '',
-    labelGap = 18, // Default gap of 18px
+    field,
     values,
     onChange,
     onEditEnd,
 }: NumericalInputProps) {
+    const scale = useContext(CardScaleContext);
+    const segments = field.segments;
     const [isEditing, setIsEditing] = useState(false);
     const [currentSegment, setCurrentSegment] = useState(0);
     const [inputDigits, setInputDigits] = useState('');
@@ -273,15 +154,8 @@ export default function NumericalInput({
     const containerRef = useRef<HTMLDivElement>(null);
     const hiddenInputRef = useRef<HTMLInputElement>(null);
 
-    // Map labels to their corresponding image paths
-    const labelImageMap: { [key: string]: string } = {
-        'Distance': '/images/labels/labelDistance.png', // Note: using the existing filename with typo
-        'Time': '/images/labels/labelTime.png',
-        'Pace': '/images/labels/labelPace.png',
-    };
-
     // Convert input digits to display value for current segment
-    const getDisplayValueFromDigits = (digits: string, segmentConfig: NumberSegmentConfig): number => {
+    const getDisplayValueFromDigits = (digits: string, segmentConfig: SegmentConfig): number => {
         if (digits.length === 0) return 0;
 
         let value: number;
@@ -509,21 +383,13 @@ export default function NumericalInput({
         }
     }, [isEditing, inputDigits, currentSegment, values, onChange]);
 
-    // Combine legacy suffix with new suffixes array for backward compatibility
-    const allSuffixes = suffixes || (suffix ? [suffix] : []);
+    const labelBottom = field.labelTop + field.label.height;
 
     return (
         <div
             ref={containerRef}
-            className={`
-        inline-flex flex-col items-center
-        cursor-pointer 
-        transition-colors 
-        relative
-        ${className}
-        ${isEditing ? 'outline-none' : ''}
-      `}
-            style={{ gap: `${labelGap}px` }}
+            className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center cursor-pointer outline-none"
+            style={{ top: (field.labelTop - STACK_TOP) * scale }}
             onClick={!isEditing ? handleClick : undefined}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
@@ -547,201 +413,75 @@ export default function NumericalInput({
                 autoCapitalize="off"
                 spellCheck={false}
             />
-            {/* Label positioned above */}
-            <div className="flex items-center justify-center">
-                {labelImageMap[label] ? (
-                    <img
-                        src={labelImageMap[label]}
-                        alt={label}
-                        className="object-contain h-[16px]"
-                    />
-                ) : (
-                    <div className="text-lg font-medium text-gray-600 dark:text-gray-400">{label}</div>
-                )}
-            </div>
 
-            {/* Numbers and suffix container */}
-            <div className="flex items-baseline gap-[14px]">
-                {/* Render segments with separators */}
-                {segments.map((segmentConfig, index) => (
-                    <div key={index} className="flex items-baseline">
+            <GlyphImage glyph={field.label} alt={field.label.alt} scale={scale} />
+
+            {/* The value row: number segments, fixed glyphs and gaps, spaced as on Strava */}
+            <div
+                className="flex items-start whitespace-nowrap"
+                style={{ marginTop: (field.rowTop - labelBottom) * scale, height: ROW_HEIGHT * scale }}
+            >
+                {field.tokens.map((token, i) => {
+                    if (token.type === 'gap') {
+                        return <span key={i} className="shrink-0" style={{ width: token.width * scale }} />;
+                    }
+                    if (token.type === 'glyph') {
+                        return <GlyphImage key={i} glyph={token.glyph} alt="" scale={scale} />;
+                    }
+                    return (
                         <AnimatedNumberSegment
-                            value={values[index]}
-                            config={segmentConfig}
-                            className="flex items-center"
+                            key={i}
+                            value={values[token.index]}
+                            config={segments[token.index]}
                             isHovered={isHovered}
-                            isEditing={isEditing && currentSegment === index}
+                            isEditing={isEditing && currentSegment === token.index}
                             cursorPosition={cursorPosition}
-                            segmentIndex={index}
+                            segmentIndex={token.index}
                         />
-
-                        {/* Add separator after segment if configured */}
-                        {separators[index] && (
-                            <span className="text-lg font-medium text-gray-600 dark:text-gray-400 pl-1">
-                                {typeof separators[index] === 'string' ? (
-                                    // Legacy string separator
-                                    separators[index]
-                                ) : (
-                                    // New object separator with imagePath support
-                                    <div className={`relative ${isEditing ? 'opacity-100' : 'opacity-100'} transition-opacity duration-300`}>
-                                        {(separators[index] as any).imagePath ? (
-                                            <img
-                                                src={(separators[index] as any).imagePath}
-                                                alt={(separators[index] as any).text || ''}
-                                                className="object-contain"
-                                                style={{ height: `${(separators[index] as any).height || 35}px` }}
-                                            />
-                                        ) : (
-                                            <span style={{ fontSize: (separators[index] as any).height ? `${(separators[index] as any).height * 0.6}px` : undefined }}>
-                                                {(separators[index] as any).text}
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                            </span>
-                        )}
-                    </div>
-                ))}
-
-                {/* Multiple Suffixes */}
-                {allSuffixes.length > 0 && (
-                    <div className="flex items-center gap-[2px]">
-                        {allSuffixes.map((suffixItem, index) => (
-                            <span key={index} className="text-lg flex items-center font-medium text-gray-600 dark:text-gray-400">
-                                <div className={`relative ${isEditing ? 'opacity-100' : 'opacity-100'} transition-opacity duration-300`}>
-                                    {suffixItem.imagePath ? (
-                                        <img
-                                            src={suffixItem.imagePath}
-                                            alt={suffixItem.text || ''}
-                                            className="object-contain"
-                                            style={{ height: `${suffixItem.height || 35}px` }}
-                                        />
-                                    ) : (
-                                        <span style={{ fontSize: suffixItem.height ? `${suffixItem.height * 0.6}px` : undefined }}>
-                                            {suffixItem.text}
-                                        </span>
-                                    )}
-                                </div>
-                            </span>
-                        ))}
-                    </div>
-                )}
+                    );
+                })}
             </div>
         </div>
     );
 }
 
-// Convenience components for common use cases
-export type DistanceUnit = 'km' | 'mi';
-
-const unitImageMap: Record<DistanceUnit, string> = {
-    km: '/images/letters/km.png',
-    mi: '/images/letters/mi.svg',
-};
-
-// The most each field can display; the run math clamps to these
-export const MAX_DISTANCE = 99.99;
-export const MAX_PACE_SECONDS = 9 * 60 + 59;
-export const MAX_TIME_SECONDS = 99 * 60 + 59;
-
-const toMinutesAndSeconds = (totalSeconds: number) => [Math.floor(totalSeconds / 60), totalSeconds % 60];
-const fromMinutesAndSeconds = ([minutes, seconds]: number[]) => minutes * 60 + seconds;
-
 interface FieldInputProps {
     value: number;
     onChange: (value: number) => void;
     onEditEnd?: () => void;
-    className?: string;
 }
 
-export function DistanceInput({ value, onChange, onEditEnd, unit = 'km', className = '' }: FieldInputProps & { unit?: DistanceUnit }) {
+export function DistanceInput({ value, onChange, onEditEnd, unit = 'km' }: FieldInputProps & { unit?: DistanceUnit }) {
     return (
         <NumericalInput
-            label="Distance"
-            segments={[
-                {
-                    maxDigits: 4,
-                    decimalPlaces: 2,
-                    minValue: 0,
-                    maxValue: MAX_DISTANCE,
-                    padStart: 2
-                }
-            ]}
-            suffix={{
-                imagePath: unitImageMap[unit]
-            }}
+            field={distanceField(unit)}
             values={[value]}
             onChange={([distance]) => onChange(distance)}
             onEditEnd={onEditEnd}
-            className={className}
-            labelGap={18}
         />
     );
 }
 
 // value is total seconds per unit of distance
-export function PaceInput({ value, onChange, onEditEnd, unit = 'km', className = '' }: FieldInputProps & { unit?: DistanceUnit }) {
+export function PaceInput({ value, onChange, onEditEnd, unit = 'km' }: FieldInputProps & { unit?: DistanceUnit }) {
     return (
         <NumericalInput
-            label="Pace"
-            segments={[
-                {
-                    maxDigits: 1,
-                    minValue: 0,
-                    maxValue: 9
-                },
-                {
-                    maxDigits: 2,
-                    minValue: 0,
-                    maxValue: 59,
-                    padStart: 2
-                }
-            ]}
-            separators={[
-                { imagePath: '/images/letters/doubledots.png', height: 35 },
-                ' '
-            ]}
-            suffixes={[
-                { imagePath: '/images/letters/slash.png', height: 40 },
-                { imagePath: unitImageMap[unit], height: 35 },
-            ]}
+            field={paceField(unit)}
             values={toMinutesAndSeconds(value)}
             onChange={(segments) => onChange(fromMinutesAndSeconds(segments))}
             onEditEnd={onEditEnd}
-            className={className}
-            labelGap={15}
         />
     );
 }
 
 // value is total seconds
-export function TimeInput({ value, onChange, onEditEnd, className = '' }: FieldInputProps) {
+export function TimeInput({ value, onChange, onEditEnd }: FieldInputProps) {
     return (
         <NumericalInput
-            label="Time"
-            segments={[
-                {
-                    maxDigits: 2,
-                    minValue: 0,
-                    maxValue: 99,
-                    padStart: 2
-                },
-                {
-                    maxDigits: 2,
-                    minValue: 0,
-                    maxValue: 59,
-                    padStart: 2
-                }
-            ]}
-            separators={[
-                { imagePath: '/images/letters/m.png', height: 35 },
-                { imagePath: '/images/letters/s.png', height: 35 },
-            ]}
+            field={timeField()}
             values={toMinutesAndSeconds(value)}
             onChange={(segments) => onChange(fromMinutesAndSeconds(segments))}
             onEditEnd={onEditEnd}
-            className={className}
-            labelGap={17}
         />
     );
 }

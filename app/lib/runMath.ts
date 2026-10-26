@@ -1,4 +1,4 @@
-import { MAX_DISTANCE, MAX_PACE_SECONDS, MAX_TIME_SECONDS } from '../components/NumericalInput';
+import { MAX_DISTANCE, MAX_PACE_SECONDS, MAX_TIME_SECONDS } from './stravaLayout';
 
 export type RunField = 'distance' | 'pace' | 'time';
 

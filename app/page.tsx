@@ -11,16 +11,13 @@ export default function Home() {
   ];
 
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-0 pb-20 gap-4 sm:p-16">
-      <main className="flex flex-col justify-center gap-[42px] row-start-2 items-center w-full w-full max-w-[640px]">
+    // Kept light on vertical padding: the card scales its Strava-proportioned stack to the height left over
+    <div className="font-sans flex flex-col items-center justify-center min-h-[100dvh] px-4 pt-8 short:pt-4 pb-6 sm:py-10">
+      <main className="flex flex-col justify-center gap-6 short:gap-4 sm:gap-8 items-center w-full max-w-[640px]">
         <Headline />
-        
+
         <ExportCard carouselImages={carouselImages} />
       </main>
-
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        
-      </footer>
     </div>
   );
 }

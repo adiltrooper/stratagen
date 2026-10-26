@@ -2,31 +2,17 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { ROUTE_BOX, ROUTE_STROKE } from '../lib/stravaLayout';
 
 const ROUTE_COLOR = '#FC5200';
-// Preset route PNGs are 555x457 with 14px strokes, shown inside the carousel slide's 24px padding.
-// Drawn strokes use the same on-screen weight so they read like the presets.
-const PRESET_WIDTH = 555;
-const PRESET_HEIGHT = 457;
-const PRESET_STROKE = 14;
-const SLIDE_PADDING = 24;
-// The canvas starts below the toolbar strip: 8px margin + 28px buttons + 8px gap
-const DRAW_AREA_TOP = 44;
 
-// Points are CSS px offsets from the centre of the canvas, so strokes stay put on resize
+// Points are in Strava's canvas pixels, relative to the centre of the route box, so strokes stay
+// put however big the card draws the box
 type Point = { x: number; y: number };
 export type Stroke = Point[];
 export type DrawnRoute = { src: string; strokes: Stroke[] };
 
 type MapPoint = (p: Point) => [number, number];
-
-function strokeWidthFor(width: number, height: number) {
-    const presetScale = Math.min(
-        (width - SLIDE_PADDING * 2) / PRESET_WIDTH,
-        (height - SLIDE_PADDING * 2) / PRESET_HEIGHT,
-    );
-    return PRESET_STROKE * presetScale;
-}
 
 function setRouteStyle(ctx: CanvasRenderingContext2D, lineWidth: number) {
     ctx.strokeStyle = ROUTE_COLOR;
@@ -59,19 +45,18 @@ function traceStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, map: MapPoin
     ctx.stroke();
 }
 
-// Renders the strokes exactly as drawn as a transparent PNG covering the whole route area
-// (toolbar strip included), so the carousel shows it in the same place it was drawn
-function renderRoute(strokes: Stroke[], canvasWidth: number, canvasHeight: number): string {
-    const areaHeight = canvasHeight + DRAW_AREA_TOP;
-    const scale = Math.max(2, window.devicePixelRatio || 1);
+// Renders the strokes exactly as drawn into a transparent image of the whole route box, at twice
+// Strava's size for sharpness, so the card and the export both show it where it was drawn
+function renderRoute(strokes: Stroke[]): string {
+    const scale = 2;
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(canvasWidth * scale);
-    canvas.height = Math.round(areaHeight * scale);
+    canvas.width = ROUTE_BOX.width * scale;
+    canvas.height = ROUTE_BOX.height * scale;
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    setRouteStyle(ctx, strokeWidthFor(canvasWidth, areaHeight));
+    setRouteStyle(ctx, ROUTE_STROKE);
 
-    const map: MapPoint = (p) => [p.x + canvasWidth / 2, p.y + DRAW_AREA_TOP + canvasHeight / 2];
+    const map: MapPoint = (p) => [p.x + ROUTE_BOX.width / 2, p.y + ROUTE_BOX.height / 2];
     strokes.forEach((stroke) => traceStroke(ctx, stroke, map));
 
     return canvas.toDataURL('image/png');
@@ -86,7 +71,7 @@ interface RouteDrawLayerProps {
     onDone: (route: DrawnRoute | null) => void;
 }
 
-// Sits over the route carousel: a Draw button, and while drawing, a grid and canvas covering the same area
+// Sits over the route box: a Draw button above it, and while drawing, a grid and canvas covering the box
 export default function RouteDrawLayer({ isDrawing, onStart, ...drawingProps }: RouteDrawLayerProps) {
     return (
         <>
@@ -109,7 +94,7 @@ export default function RouteDrawLayer({ isDrawing, onStart, ...drawingProps }: 
                     onClick={onStart}
                     aria-label="Draw your own route"
                     title="Draw your own route"
-                    className="absolute top-2 left-2 flex items-center justify-center w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-[background-color,opacity] duration-200 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
+                    className="absolute bottom-full left-0 mb-2 flex items-center justify-center w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-[background-color,opacity] duration-200 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
                 >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.862 4.487a2.1 2.1 0 1 1 2.97 2.97L8.5 18.79l-4 1 1-4L16.862 4.487Z" />
@@ -138,7 +123,12 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
     // Only updated when a stroke starts or ends, never per pointer move
     const [strokeCount, setStrokeCount] = useState(strokesRef.current.length);
 
-    const toPixels: MapPoint = (p) => [p.x + sizeRef.current.width / 2, p.y + sizeRef.current.height / 2];
+    // Card pixels per canvas pixel, from how big the box is drawn
+    const boxScale = () => sizeRef.current.width / ROUTE_BOX.width;
+    const toPixels: MapPoint = (p) => [
+        p.x * boxScale() + sizeRef.current.width / 2,
+        p.y * boxScale() + sizeRef.current.height / 2,
+    ];
 
     const getContext = () => canvasRef.current?.getContext('2d') ?? null;
 
@@ -147,8 +137,7 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
         if (!ctx) return;
         const { width, height } = sizeRef.current;
         ctx.clearRect(0, 0, width, height);
-        // Weight follows the whole route area, matching renderRoute and the presets
-        setRouteStyle(ctx, strokeWidthFor(width, height + DRAW_AREA_TOP));
+        setRouteStyle(ctx, ROUTE_STROKE * boxScale());
         strokesRef.current.forEach((stroke) => traceStroke(ctx, stroke, toPixels));
     }, []);
 
@@ -204,10 +193,13 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
         if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     }, []);
 
-    const toPoint = (e: { clientX: number; clientY: number }, rect: DOMRect): Point => ({
-        x: e.clientX - rect.left - rect.width / 2,
-        y: e.clientY - rect.top - rect.height / 2,
-    });
+    const toPoint = (e: { clientX: number; clientY: number }, rect: DOMRect): Point => {
+        const scale = rect.width / ROUTE_BOX.width;
+        return {
+            x: (e.clientX - rect.left - rect.width / 2) / scale,
+            y: (e.clientY - rect.top - rect.height / 2) / scale,
+        };
+    };
 
     const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
         if (activeRef.current || (e.pointerType === 'mouse' && e.button !== 0)) return;
@@ -230,9 +222,9 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
         for (const sample of samples.length > 0 ? samples : [e.nativeEvent]) {
             const point = toPoint(sample, active.rect);
             const last = active.points[active.points.length - 1];
-            const dx = point.x - last.x;
-            const dy = point.y - last.y;
-            if (dx * dx + dy * dy >= 1) active.points.push(point);
+            // Skip samples less than a screen pixel from the last one
+            const minStep = ROUTE_BOX.width / active.rect.width;
+            if (Math.hypot(point.x - last.x, point.y - last.y) >= minStep) active.points.push(point);
         }
         scheduleDraw();
     };
@@ -269,8 +261,7 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
 
     const done = () => {
         const strokes = strokesRef.current;
-        const { width, height } = sizeRef.current;
-        onDone(strokes.length > 0 ? { src: renderRoute(strokes, width, height), strokes } : null);
+        onDone(strokes.length > 0 ? { src: renderRoute(strokes), strokes } : null);
     };
 
     useEffect(() => {
@@ -290,11 +281,10 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
 
     return (
         <div className="relative w-full h-full">
-            {/* The grid and canvas start below the toolbar strip, so strokes never run under the buttons */}
+            {/* The grid and canvas cover the route box exactly; the toolbar sits just above it */}
             <div
-                className="absolute inset-x-0 bottom-0 overflow-hidden rounded-lg"
+                className="absolute inset-0 overflow-hidden rounded-lg"
                 style={{
-                    top: DRAW_AREA_TOP,
                     backgroundImage:
                         'linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px)',
                     backgroundSize: '20px 20px',
@@ -318,7 +308,7 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
                 )}
             </div>
 
-            <div className="absolute top-2 left-2 flex gap-1">
+            <div className="absolute bottom-full left-0 mb-2 flex gap-1">
                 <button
                     onClick={undo}
                     disabled={strokeCount === 0}
@@ -347,7 +337,7 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
                 onClick={done}
                 aria-label="Done"
                 title="Done"
-                className="absolute top-2 right-2 flex items-center justify-center w-7 h-7 rounded-full bg-white text-background-secondary transition-opacity duration-200 hover:opacity-90"
+                className="absolute bottom-full right-0 mb-2 flex items-center justify-center w-7 h-7 rounded-full bg-white text-background-secondary transition-opacity duration-200 hover:opacity-90"
             >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12.5l4.5 4.5L19 7.5" />
