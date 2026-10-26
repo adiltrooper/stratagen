@@ -50,6 +50,9 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
   const changedFieldRef = useRef<RunField | null>(null);
   // The card draws Strava's canvas at this many card pixels per canvas pixel
   const [scale, setScale] = useState(0.4);
+  // The server can't know the screen size, so its HTML has a placeholder scale. The card stays
+  // hidden until the browser has measured, so it never shows at the wrong size and then jumps.
+  const [hasMeasured, setHasMeasured] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const logoRef = useRef<HTMLParagraphElement>(null);
   const ishRef = useRef<HTMLSpanElement>(null);
@@ -74,6 +77,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
       const byHeight = (window.innerHeight - pageChrome - everythingElse) / STACK_HEIGHT;
       const byWidth = board.clientWidth / MAX_ROW_WIDTH;
       setScale(Math.max(MIN_CARD_SCALE, Math.min(1, byWidth, byHeight)));
+      setHasMeasured(true);
     };
     fit();
     window.addEventListener('resize', fit);
@@ -156,7 +160,11 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
   const atCanvasY = (y: number) => (y - STACK_TOP) * scale;
 
   return (
-    <div className="flex flex-col items-center gap-3 sm:gap-4 w-full max-w-[480px]">
+    <div
+      className={`flex flex-col items-center gap-3 sm:gap-4 w-full max-w-[480px] transition-opacity duration-500 ${
+        hasMeasured ? 'opacity-100' : 'opacity-0'
+      }`}
+    >
       <CardScaleContext.Provider value={scale}>
         <div className="group w-full p-5 sm:p-8 rounded-4xl bg-background-secondary">
           {/* Strava's canvas, cropped to its content and scaled; every position comes from stravaLayout */}
