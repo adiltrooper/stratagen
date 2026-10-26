@@ -10,8 +10,10 @@ const PRESET_WIDTH = 555;
 const PRESET_HEIGHT = 457;
 const PRESET_STROKE = 14;
 const SLIDE_PADDING = 24;
+// The canvas starts below the toolbar strip: 8px margin + 28px buttons + 8px gap
+const DRAW_AREA_TOP = 44;
 
-// Points are CSS px offsets from the centre of the drawing area, so strokes stay put on resize
+// Points are CSS px offsets from the centre of the canvas, so strokes stay put on resize
 type Point = { x: number; y: number };
 export type Stroke = Point[];
 export type DrawnRoute = { src: string; strokes: Stroke[] };
@@ -57,17 +59,19 @@ function traceStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, map: MapPoin
     ctx.stroke();
 }
 
-// Renders the strokes exactly as drawn, at the drawing area's size, as a transparent PNG
-function renderRoute(strokes: Stroke[], width: number, height: number): string {
+// Renders the strokes exactly as drawn as a transparent PNG covering the whole route area
+// (toolbar strip included), so the carousel shows it in the same place it was drawn
+function renderRoute(strokes: Stroke[], canvasWidth: number, canvasHeight: number): string {
+    const areaHeight = canvasHeight + DRAW_AREA_TOP;
     const scale = Math.max(2, window.devicePixelRatio || 1);
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(width * scale);
-    canvas.height = Math.round(height * scale);
+    canvas.width = Math.round(canvasWidth * scale);
+    canvas.height = Math.round(areaHeight * scale);
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    setRouteStyle(ctx, strokeWidthFor(width, height));
+    setRouteStyle(ctx, strokeWidthFor(canvasWidth, areaHeight));
 
-    const map: MapPoint = (p) => [p.x + width / 2, p.y + height / 2];
+    const map: MapPoint = (p) => [p.x + canvasWidth / 2, p.y + DRAW_AREA_TOP + canvasHeight / 2];
     strokes.forEach((stroke) => traceStroke(ctx, stroke, map));
 
     return canvas.toDataURL('image/png');
@@ -143,7 +147,8 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
         if (!ctx) return;
         const { width, height } = sizeRef.current;
         ctx.clearRect(0, 0, width, height);
-        setRouteStyle(ctx, strokeWidthFor(width, height));
+        // Weight follows the whole route area, matching renderRoute and the presets
+        setRouteStyle(ctx, strokeWidthFor(width, height + DRAW_AREA_TOP));
         strokesRef.current.forEach((stroke) => traceStroke(ctx, stroke, toPixels));
     }, []);
 
@@ -284,30 +289,34 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
     const toolButtonClass = 'flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/15 text-white backdrop-blur-sm transition-colors duration-200 disabled:opacity-40 disabled:pointer-events-none';
 
     return (
-        <div
-            className="relative w-full h-full overflow-hidden rounded-lg"
-            style={{
-                backgroundImage:
-                    'linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px)',
-                backgroundSize: '20px 20px',
-                backgroundPosition: 'center',
-            }}
-        >
-            <canvas
-                ref={canvasRef}
-                aria-label="Route drawing area"
-                className="absolute inset-0 w-full h-full touch-none cursor-crosshair"
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerEnd}
-                onPointerCancel={handlePointerEnd}
-            />
+        <div className="relative w-full h-full">
+            {/* The grid and canvas start below the toolbar strip, so strokes never run under the buttons */}
+            <div
+                className="absolute inset-x-0 bottom-0 overflow-hidden rounded-lg"
+                style={{
+                    top: DRAW_AREA_TOP,
+                    backgroundImage:
+                        'linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px)',
+                    backgroundSize: '20px 20px',
+                    backgroundPosition: 'center',
+                }}
+            >
+                <canvas
+                    ref={canvasRef}
+                    aria-label="Route drawing area"
+                    className="absolute inset-0 w-full h-full touch-none cursor-crosshair"
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerEnd}
+                    onPointerCancel={handlePointerEnd}
+                />
 
-            {strokeCount === 0 && (
-                <p className="absolute inset-0 flex items-center justify-center pointer-events-none text-white/30 text-sm">
-                    Draw your route
-                </p>
-            )}
+                {strokeCount === 0 && (
+                    <p className="absolute inset-0 flex items-center justify-center pointer-events-none text-white/30 text-sm">
+                        Draw your route
+                    </p>
+                )}
+            </div>
 
             <div className="absolute top-2 left-2 flex gap-1">
                 <button
