@@ -10,7 +10,7 @@ import RouteDrawLayer, { type DrawnRoute } from "./RouteDrawLayer";
 import { solveRun, type RunField, type RunStats } from "../lib/runMath";
 import {
   ISH_FONT_SIZE, ISH_GAP, LOGO, MAX_ROW_WIDTH, ROUTE_BOX, ROUTE_TOOLBAR_GAP, STACK_HEIGHT, STACK_TOP,
-  distanceField, paceField, timeField, toMinutesAndSeconds, type DistanceUnit,
+  distanceField, paceField, timeField, toHoursMinutesSeconds, toMinutesAndSeconds, type DistanceUnit,
 } from "../lib/stravaLayout";
 import { renderStravaExport } from "../lib/stravaExport";
 
@@ -129,7 +129,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
         rows: [
           { field: distanceField(unit), values: [run.distance] },
           { field: paceField(unit), values: toMinutesAndSeconds(run.paceSeconds) },
-          { field: timeField(), values: toMinutesAndSeconds(run.timeSeconds) },
+          { field: timeField(), values: toHoursMinutesSeconds(run.timeSeconds) },
         ],
         routeSrc: routeImages[routeIndex],
       });

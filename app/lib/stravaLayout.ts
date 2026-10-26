@@ -42,6 +42,7 @@ export const GLYPHS = {
     slash: { src: '/images/letters/slash.png', width: 48, height: 80, top: 0 },
     km: { src: '/images/letters/km.png', width: 148, height: 70, top: 1 },
     mi: { src: '/images/letters/mi.svg', width: 106, height: 70, top: 1 },
+    h: { src: '/images/letters/h.png', width: 52, height: 70, top: 1 },
     m: { src: '/images/letters/m.png', width: 84, height: 70, top: 1 },
     s: { src: '/images/letters/s.png', width: 51, height: 70, top: 1 },
 } satisfies Record<string, Glyph>;
@@ -68,9 +69,10 @@ export interface SegmentConfig {
     displayPadStart?: number; // Integer digits shown otherwise, like Strava's "3.41 km" (defaults to padStart)
 }
 
-export function formatSegment(value: number, config: SegmentConfig, editing = false): string {
+// displayPadStart overrides the segment's own, e.g. minutes after hours show as "1h 05m"
+export function formatSegment(value: number, config: SegmentConfig, editing = false, displayPadStart?: number): string {
     let formatted = config.decimalPlaces !== undefined ? value.toFixed(config.decimalPlaces) : value.toString();
-    const pad = editing ? config.padStart : config.displayPadStart ?? config.padStart;
+    const pad = editing ? config.padStart : displayPadStart ?? config.displayPadStart ?? config.padStart;
     if (pad) {
         const [integerPart, decimalPart] = formatted.split('.');
         const paddedInteger = integerPart.padStart(pad, '0');
@@ -81,7 +83,7 @@ export function formatSegment(value: number, config: SegmentConfig, editing = fa
 
 // A value row, left to right: number segments, fixed glyphs and the gaps between them
 export type RowToken =
-    | { type: 'segment'; index: number }
+    | { type: 'segment'; index: number; displayPadStart?: number }
     | { type: 'glyph'; glyph: Glyph }
     | { type: 'gap'; width: number };
 
@@ -91,13 +93,17 @@ export interface FieldLayout {
     labelTop: number;
     rowTop: number;
     segments: SegmentConfig[];
-    tokens: RowToken[];
+    // Either fixed, or chosen from the values and whether the field is being typed into
+    tokens: RowToken[] | ((values: number[], editing: boolean) => RowToken[]);
 }
+
+export const rowTokens = (field: FieldLayout, values: number[], editing: boolean) =>
+    typeof field.tokens === 'function' ? field.tokens(values, editing) : field.tokens;
 
 // The most each field can display; the run maths clamps to these
 export const MAX_DISTANCE = 99.99;
 export const MAX_PACE_SECONDS = 9 * 60 + 59;
-export const MAX_TIME_SECONDS = 99 * 60 + 59;
+export const MAX_TIME_SECONDS = 9 * 3600 + 59 * 60 + 59;
 
 const unitGlyph = (unit: DistanceUnit) => (unit === 'km' ? GLYPHS.km : GLYPHS.mi);
 
@@ -134,34 +140,53 @@ export const paceField = (unit: DistanceUnit): FieldLayout => ({
     ],
 });
 
+// Like Strava: "20m 10s" under an hour and "1h 05m" from an hour on. While typing, every slot
+// shows ("0h 00m 00s") so hours, minutes and seconds can be entered in one go.
 export const timeField = (): FieldLayout => ({
     label: { alt: 'Time', src: '/images/labels/labelTime.png', width: 107, height: 31, top: 0 },
     labelTop: 791,
     rowTop: 855,
     segments: [
-        { maxDigits: 2, minValue: 0, maxValue: 99, padStart: 2, displayPadStart: 1 },
+        { maxDigits: 1, minValue: 0, maxValue: 9, padStart: 1 },
+        { maxDigits: 2, minValue: 0, maxValue: 59, padStart: 2, displayPadStart: 1 },
         { maxDigits: 2, minValue: 0, maxValue: 59, padStart: 2 },
     ],
-    tokens: [
-        { type: 'segment', index: 0 },
-        { type: 'gap', width: 11 },
-        { type: 'glyph', glyph: GLYPHS.m },
-        { type: 'gap', width: 33 },
-        { type: 'segment', index: 1 },
-        { type: 'gap', width: 8 },
-        { type: 'glyph', glyph: GLYPHS.s },
-    ],
+    tokens: ([hours], editing) => {
+        const hoursPart: RowToken[] = [
+            { type: 'segment', index: 0 },
+            { type: 'gap', width: 9 },
+            { type: 'glyph', glyph: GLYPHS.h },
+            { type: 'gap', width: 33 },
+        ];
+        const minutesPart = (displayPadStart?: number): RowToken[] => [
+            { type: 'segment', index: 1, displayPadStart },
+            { type: 'gap', width: 11 },
+            { type: 'glyph', glyph: GLYPHS.m },
+        ];
+        const secondsPart: RowToken[] = [
+            { type: 'gap', width: 33 },
+            { type: 'segment', index: 2 },
+            { type: 'gap', width: 8 },
+            { type: 'glyph', glyph: GLYPHS.s },
+        ];
+        if (editing) return [...hoursPart, ...minutesPart(), ...secondsPart];
+        if (hours > 0) return [...hoursPart, ...minutesPart(2)];
+        return [...minutesPart(), ...secondsPart];
+    },
 });
 
 // Pace and time are stored as total seconds but shown as minute and second segments
 export const toMinutesAndSeconds = (totalSeconds: number) => [Math.floor(totalSeconds / 60), totalSeconds % 60];
 export const fromMinutesAndSeconds = ([minutes, seconds]: number[]) => minutes * 60 + seconds;
+export const toHoursMinutesSeconds = (totalSeconds: number) =>
+    [Math.floor(totalSeconds / 3600), Math.floor(totalSeconds / 60) % 60, totalSeconds % 60];
+export const fromHoursMinutesSeconds = ([hours, minutes, seconds]: number[]) => hours * 3600 + minutes * 60 + seconds;
 
 // Lays a value row out left to right, returning each glyph's x (from the row's left edge) and the total width
 export function layoutRow(field: FieldLayout, values: number[]) {
     const placed: { glyph: Glyph; x: number }[] = [];
     let x = 0;
-    for (const token of field.tokens) {
+    for (const token of rowTokens(field, values, false)) {
         if (token.type === 'gap') {
             x += token.width;
         } else if (token.type === 'glyph') {
@@ -169,7 +194,7 @@ export function layoutRow(field: FieldLayout, values: number[]) {
             x += token.glyph.width;
         } else {
             let previous: string | undefined;
-            for (const char of formatSegment(values[token.index], field.segments[token.index])) {
+            for (const char of formatSegment(values[token.index], field.segments[token.index], false, token.displayPadStart)) {
                 x += charGap(previous, char);
                 const glyph = glyphForChar(char);
                 placed.push({ glyph, x });
@@ -195,5 +220,6 @@ export const ISH_GAP = 6;
 // The card shows the canvas cropped to this band: from the Distance label to the bottom of the logo
 export const STACK_TOP = 345;
 export const STACK_HEIGHT = LOGO.top + LOGO.height - STACK_TOP;
-// Wide enough for the widest possible row ("99.99 km"), so the card's scale never clips one
-export const MAX_ROW_WIDTH = 480;
+// Wide enough for the widest possible row (the time while typing, "0h 00m 00s"), so the card's
+// scale never clips one
+export const MAX_ROW_WIDTH = 630;

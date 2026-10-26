@@ -3,8 +3,9 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
-    DIGIT_GLYPHS, ROW_HEIGHT, STACK_TOP, charGap, distanceField, formatSegment, fromMinutesAndSeconds, glyphForChar,
-    paceField, timeField, toMinutesAndSeconds, type DistanceUnit, type FieldLayout, type Glyph, type SegmentConfig,
+    DIGIT_GLYPHS, ROW_HEIGHT, STACK_TOP, charGap, distanceField, formatSegment, fromHoursMinutesSeconds,
+    fromMinutesAndSeconds, glyphForChar, paceField, rowTokens, timeField, toHoursMinutesSeconds, toMinutesAndSeconds,
+    type DistanceUnit, type FieldLayout, type Glyph, type SegmentConfig,
 } from '../lib/stravaLayout';
 
 // Card pixels per native (1080-wide canvas) pixel; the card sets it to fit the screen
@@ -72,6 +73,9 @@ function RollingDigit({ currentDigit, previousDigit }: { currentDigit: string; p
 interface AnimatedNumberSegmentProps {
     value: number;
     config: SegmentConfig;
+    // Show every digit slot, while any part of the field is being typed into
+    showSlots?: boolean;
+    displayPadStart?: number;
     isHovered?: boolean;
     isEditing?: boolean;
     cursorPosition?: number;
@@ -81,6 +85,8 @@ interface AnimatedNumberSegmentProps {
 function AnimatedNumberSegment({
     value,
     config,
+    showSlots = false,
+    displayPadStart,
     isHovered = false,
     isEditing = false,
     cursorPosition = -1,
@@ -91,8 +97,8 @@ function AnimatedNumberSegment({
     const [previousValue] = useState(value);
 
     // While typing, every digit slot shows (e.g. "03.41"); otherwise leading zeros drop, as on Strava
-    const currentDigits = formatSegment(value, config, isEditing).split('');
-    const previousDigits = formatSegment(previousValue, config).split('');
+    const currentDigits = formatSegment(value, config, showSlots, displayPadStart).split('');
+    const previousDigits = formatSegment(previousValue, config, false, displayPadStart).split('');
 
     return (
         <div className="relative flex items-start shrink-0">
@@ -421,7 +427,7 @@ export default function NumericalInput({
                 className="flex items-start whitespace-nowrap"
                 style={{ marginTop: (field.rowTop - labelBottom) * scale, height: ROW_HEIGHT * scale }}
             >
-                {field.tokens.map((token, i) => {
+                {rowTokens(field, values, isEditing).map((token, i) => {
                     if (token.type === 'gap') {
                         return <span key={i} className="shrink-0" style={{ width: token.width * scale }} />;
                     }
@@ -430,9 +436,11 @@ export default function NumericalInput({
                     }
                     return (
                         <AnimatedNumberSegment
-                            key={i}
+                            key={`segment${token.index}`}
                             value={values[token.index]}
                             config={segments[token.index]}
+                            showSlots={isEditing}
+                            displayPadStart={token.displayPadStart}
                             isHovered={isHovered}
                             isEditing={isEditing && currentSegment === token.index}
                             cursorPosition={cursorPosition}
@@ -479,8 +487,8 @@ export function TimeInput({ value, onChange, onEditEnd }: FieldInputProps) {
     return (
         <NumericalInput
             field={timeField()}
-            values={toMinutesAndSeconds(value)}
-            onChange={(segments) => onChange(fromMinutesAndSeconds(segments))}
+            values={toHoursMinutesSeconds(value)}
+            onChange={(segments) => onChange(fromHoursMinutesSeconds(segments))}
             onEditEnd={onEditEnd}
         />
     );

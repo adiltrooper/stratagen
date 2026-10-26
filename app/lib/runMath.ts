@@ -12,7 +12,7 @@ export interface RunStats {
 const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
 
 // Works out `field` from the other two. Leaves the stats unchanged if either of those is zero.
-// Results are clamped to what the fields can display (e.g. times over 99:59).
+// Results are clamped to what the fields can display (e.g. times over 9h 59m 59s).
 export function solveRun(stats: RunStats, field: RunField): RunStats {
     const { distance, paceSeconds, timeSeconds } = stats;
 
