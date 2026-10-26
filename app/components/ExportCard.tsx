@@ -17,6 +17,12 @@ const EMPTY_RUN: RunStats = { distance: 0, paceSeconds: 0, timeSeconds: 0 };
 
 const runStatKey: Record<RunField, keyof RunStats> = { distance: 'distance', pace: 'paceSeconds', time: 'timeSeconds' };
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+// YYYY-MM-DD-HHMM (24-hour) in the viewer's own timezone, for export filenames
+const localDateStamp = (date: Date) =>
+  `${[date.getFullYear(), date.getMonth() + 1, date.getDate()].map(pad2).join('-')}-${pad2(date.getHours())}${pad2(date.getMinutes())}`;
+
 interface ExportCardProps {
   carouselImages: string[];
 }
@@ -107,7 +113,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = 'striva-export.png';
+          a.download = `stravaish-${localDateStamp(new Date())}.png`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
