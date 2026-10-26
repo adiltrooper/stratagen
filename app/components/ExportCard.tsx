@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { DistanceInput, PaceInput, TimeInput, type DistanceUnit } from "./NumericalInput";
 import Carousel from "./Carousel";
@@ -20,6 +20,19 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
   // The user's own route lives in one slot after the presets; redrawing replaces it
   const [drawnRoute, setDrawnRoute] = useState<DrawnRoute | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
+  const logoRef = useRef<HTMLParagraphElement>(null);
+  const ishRef = useRef<HTMLSpanElement>(null);
+  // How far the logo slides left on load so logo + "ish" end up centred together; null until measured
+  const [logoShift, setLogoShift] = useState<number | null>(null);
+
+  // The logo's width is only known once its image has loaded, so measure then (or now, if cached)
+  const measureLogoShift = () => {
+    const logo = logoRef.current;
+    const ish = ishRef.current;
+    if (!logo || !ish || logo.offsetWidth === 0) return;
+    setLogoShift((ish.offsetLeft + ish.offsetWidth - logo.offsetWidth) / 2);
+  };
+  useLayoutEffect(measureLogoShift, []);
 
   const routeImages = drawnRoute ? [...carouselImages, drawnRoute.src] : carouselImages;
 
@@ -116,10 +129,33 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
           )}
         </div>
 
-        <p className="relative text-2xl font-bold">
-          <img src="/images/strava-logo.svg" alt="STRAVA" className="h-[18px] w-auto" />
-          <span className="absolute left-full top-0 ml-0.5 text-[9px] leading-none">ish</span>
-        </p>
+        {/* On load: STRAVA fades in alone, then slides left as the "ish" appears beside it */}
+        <motion.p
+          ref={logoRef}
+          className="relative text-2xl font-bold"
+          initial={{ x: 0 }}
+          animate={{ x: logoShift === null ? 0 : -logoShift }}
+          transition={{ delay: 0.9, type: 'spring', stiffness: 260, damping: 26 }}
+        >
+          <motion.img
+            src="/images/strava-logo.svg"
+            alt="STRAVA"
+            className="h-[18px] w-auto"
+            onLoad={measureLogoShift}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+          />
+          <motion.span
+            ref={ishRef}
+            className="absolute left-full top-0 ml-0.5 text-[9px] leading-none"
+            initial={{ opacity: 0, x: -4 }}
+            animate={logoShift === null ? { opacity: 0, x: -4 } : { opacity: 1, x: 0 }}
+            transition={{ delay: 0.95, duration: 0.35, ease: 'easeOut' }}
+          >
+            ish
+          </motion.span>
+        </motion.p>
       </div>
 
       <div className="flex flex-col items-center gap-3 w-[360px] sm:w-[480px]">
