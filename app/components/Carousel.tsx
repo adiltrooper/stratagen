@@ -70,8 +70,9 @@ export default function Carousel({
 
         {/* Navigation arrows - conditionally render based on hideNavigation prop */}
         {images.length > 1 && !hideNavigation && (
-          // Top right, sized to line up with the draw button in the top left
-          <div className="absolute top-2 right-2 flex gap-1">
+          // Top right, sized to line up with the draw button in the top left. Like it, they only show
+          // while the card is hovered on devices that can hover; touch screens always see them.
+          <div className="absolute top-2 right-2 flex gap-1 transition-opacity duration-200 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-has-[:focus-visible]:opacity-100">
             <button
               onClick={prevSlide}
               className="flex items-center justify-center w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors duration-200 backdrop-blur-sm"

@@ -80,7 +80,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
     <div className="flex flex-col items-center gap-2 sm:gap-4">
       <div 
         ref={exportRef}
-        className={`flex flex-col justify-center items-center w-[360px] sm:w-[480px] p-11 rounded-4xl gap-2 ${
+        className={`group flex flex-col justify-center items-center w-[360px] sm:w-[480px] p-11 rounded-4xl gap-2 ${
           isExporting ? '' : 'bg-background-secondary'
         }`}
       >
@@ -123,10 +123,10 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
       </div>
 
       <div className="flex flex-col items-center gap-3 w-[360px] sm:w-[480px]">
-        <div role="radiogroup" aria-label="Distance unit" className="relative flex w-full h-12 p-1 rounded-full bg-background-secondary">
+        <div role="radiogroup" aria-label="Distance unit" className="relative flex w-1/2 h-12 p-1 rounded-full bg-background-secondary">
           {/* Sliding pill: half the track wide, so translating by its own width lands on the other option */}
           <motion.div
-            className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-white"
+            className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-white/75"
             initial={false}
             animate={{ x: unit === 'km' ? '0%' : '100%' }}
             transition={{ type: 'spring', stiffness: 500, damping: 38 }}
@@ -149,7 +149,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
         <button
           onClick={handleExport}
           disabled={isExporting}
-          className="h-12 bg-white w-full hover:bg-blue-600 disabled:bg-gray-400 text-background-secondary font-medium text-lg rounded-full transition-colors duration-200"
+          className="h-12 bg-strava w-full hover:brightness-110 disabled:opacity-60 text-white font-medium text-lg rounded-full transition-[filter,opacity] duration-200"
         >
           {isExporting ? 'Exporting...' : 'Export'}
         </button>

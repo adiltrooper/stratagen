@@ -105,7 +105,7 @@ export default function RouteDrawLayer({ isDrawing, onStart, ...drawingProps }: 
                     onClick={onStart}
                     aria-label="Draw your own route"
                     title="Draw your own route"
-                    className="absolute top-2 left-2 flex items-center justify-center w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-colors duration-200"
+                    className="absolute top-2 left-2 flex items-center justify-center w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-[background-color,opacity] duration-200 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
                 >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.862 4.487a2.1 2.1 0 1 1 2.97 2.97L8.5 18.79l-4 1 1-4L16.862 4.487Z" />

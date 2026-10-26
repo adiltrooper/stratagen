@@ -11,6 +11,8 @@ module.exports = {
         background: "var(--background)",
         foreground: "var(--foreground)",
         "background-secondary": "var(--background-secondary)",
+        // Same orange as the route lines
+        strava: "#FC5200",
       },
       borderRadius: {
         "4xl": "2rem",
