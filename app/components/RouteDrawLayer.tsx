@@ -78,7 +78,7 @@ interface RouteDrawLayerProps {
     initialStrokes: Stroke[];
     onStart: () => void;
     onCancel: () => void;
-    // null when everything was cleared
+    // null when every stroke was undone
     onDone: (route: DrawnRoute | null) => void;
 }
 
@@ -105,9 +105,9 @@ export default function RouteDrawLayer({ isDrawing, onStart, ...drawingProps }: 
                     onClick={onStart}
                     aria-label="Draw your own route"
                     title="Draw your own route"
-                    className="absolute top-2 left-2 flex items-center justify-center w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-colors duration-200"
+                    className="absolute top-2 left-2 flex items-center justify-center w-7 h-7 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm transition-colors duration-200"
                 >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.862 4.487a2.1 2.1 0 1 1 2.97 2.97L8.5 18.79l-4 1 1-4L16.862 4.487Z" />
                     </svg>
                 </button>
@@ -262,13 +262,6 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
         redrawAll();
     }, [redrawAll]);
 
-    const clear = () => {
-        if (activeRef.current) return;
-        strokesRef.current = [];
-        setStrokeCount(0);
-        redrawAll();
-    };
-
     const done = () => {
         const strokes = strokesRef.current;
         const { width, height } = sizeRef.current;
@@ -288,7 +281,7 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [onCancel, undo]);
 
-    const toolButtonClass = 'h-9 px-3.5 rounded-full bg-white/10 hover:bg-white/15 text-white text-sm font-medium backdrop-blur-sm transition-colors duration-200 disabled:opacity-40 disabled:pointer-events-none';
+    const toolButtonClass = 'flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/15 text-white backdrop-blur-sm transition-colors duration-200 disabled:opacity-40 disabled:pointer-events-none';
 
     return (
         <div
@@ -316,28 +309,41 @@ function DrawingSurface({ initialStrokes, onCancel, onDone }: Omit<RouteDrawLaye
                 </p>
             )}
 
-            <div className="absolute top-2 left-2 flex gap-1.5">
-                <button onClick={undo} disabled={strokeCount === 0} className={toolButtonClass}>Undo</button>
-                <button onClick={clear} disabled={strokeCount === 0} className={toolButtonClass}>Clear</button>
-            </div>
-
-            <div className="absolute top-2 right-2 flex gap-1.5">
+            <div className="absolute top-2 left-2 flex gap-1">
                 <button
-                    onClick={onCancel}
-                    aria-label="Cancel drawing"
-                    className="flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/15 text-white backdrop-blur-sm transition-colors duration-200"
+                    onClick={undo}
+                    disabled={strokeCount === 0}
+                    aria-label="Undo"
+                    title="Undo"
+                    className={toolButtonClass}
                 >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6l12 12M18 6L6 18" />
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14 4 9l5-5" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
                     </svg>
                 </button>
                 <button
-                    onClick={done}
-                    className="h-9 px-4 rounded-full bg-white text-background-secondary text-sm font-medium transition-opacity duration-200 hover:opacity-90"
+                    onClick={onCancel}
+                    aria-label="Cancel drawing"
+                    title="Cancel"
+                    className={toolButtonClass}
                 >
-                    Done
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6l12 12M18 6L6 18" />
+                    </svg>
                 </button>
             </div>
+
+            <button
+                onClick={done}
+                aria-label="Done"
+                title="Done"
+                className="absolute top-2 right-2 flex items-center justify-center w-7 h-7 rounded-full bg-white text-background-secondary transition-opacity duration-200 hover:opacity-90"
+            >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12.5l4.5 4.5L19 7.5" />
+                </svg>
+            </button>
         </div>
     );
 }
