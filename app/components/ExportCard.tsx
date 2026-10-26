@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { DistanceInput, PaceInput, TimeInput, type DistanceUnit } from "./NumericalInput";
+import { DistanceInput, PaceInput, TimeInput, NUMBER_INTRO_SETTLED_MS, type DistanceUnit } from "./NumericalInput";
 import Carousel from "./Carousel";
 import RouteDrawLayer, { type DrawnRoute } from "./RouteDrawLayer";
 
@@ -129,13 +129,13 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
           )}
         </div>
 
-        {/* On load: STRAVA fades in alone, then slides left as the "ish" appears beside it */}
+        {/* On load: STRAVA fades in alone, then once the numbers have rolled to zero it slides left as the "ish" appears */}
         <motion.p
           ref={logoRef}
           className="relative text-2xl font-bold"
           initial={{ x: 0 }}
           animate={{ x: logoShift === null ? 0 : -logoShift }}
-          transition={{ delay: 0.9, type: 'spring', stiffness: 260, damping: 26 }}
+          transition={{ delay: NUMBER_INTRO_SETTLED_MS / 1000, type: 'spring', stiffness: 260, damping: 26 }}
         >
           <motion.img
             src="/images/strava-logo.svg"
@@ -151,7 +151,7 @@ export default function ExportCard({ carouselImages }: ExportCardProps) {
             className="absolute left-full top-0 ml-0.5 text-[9px] leading-none"
             initial={{ opacity: 0, x: -4 }}
             animate={logoShift === null ? { opacity: 0, x: -4 } : { opacity: 1, x: 0 }}
-            transition={{ delay: 0.95, duration: 0.35, ease: 'easeOut' }}
+            transition={{ delay: NUMBER_INTRO_SETTLED_MS / 1000 + 0.05, duration: 0.35, ease: 'easeOut' }}
           >
             ish
           </motion.span>

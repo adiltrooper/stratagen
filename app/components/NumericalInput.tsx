@@ -41,6 +41,10 @@ interface NumericalInputConfig {
 
 interface NumericalInputProps extends NumericalInputConfig { }
 
+const DEFAULT_ANIMATE_TO_ZERO_DELAY_MS = 1000;
+// When the on-mount roll to zero has visibly settled: the delay above plus ~1.6s for the digit spring
+export const NUMBER_INTRO_SETTLED_MS = DEFAULT_ANIMATE_TO_ZERO_DELAY_MS + 1600;
+
 // Enhanced rolling effect with intermediate values  
 interface EnhancedRollingDigitProps {
     currentDigit: string;
@@ -254,7 +258,7 @@ export default function NumericalInput({
     suffix, // Keep for backward compatibility
     className = '',
     animateOnMount = false,
-    animateToZeroDelay = 1000,
+    animateToZeroDelay = DEFAULT_ANIMATE_TO_ZERO_DELAY_MS,
     labelGap = 18 // Default gap of 18px
 }: NumericalInputProps) {
     const [displayValues, setDisplayValues] = useState(segments.map(s => s.initialValue));
